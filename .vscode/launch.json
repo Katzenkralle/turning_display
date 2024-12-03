@@ -1,0 +1,55 @@
+{
+  // Use IntelliSense to learn about possible attributes.
+  // Hover to view descriptions of existing attributes.
+  // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug unit tests in library 'db'",
+      "cargo": {
+        "args": ["test", "--no-run", "--lib", "--package=db"],
+        "filter": {
+          "name": "db",
+          "kind": "lib"
+        }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug executable 'turning_display'",
+      "cargo": {
+        "args": ["build", "--bin=turning_display", "--package=turning_display"],
+        "filter": {
+          "name": "turning_display",
+          "kind": "bin"
+        }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug unit tests in executable 'turning_display'",
+      "cargo": {
+        "args": [
+          "test",
+          "--no-run",
+          "--bin=turning_display",
+          "--package=turning_display"
+        ],
+        "filter": {
+          "name": "turning_display",
+          "kind": "bin"
+        }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}"
+    }
+  ]
+}

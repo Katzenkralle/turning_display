@@ -2,8 +2,8 @@
 import { ref, onMounted, onUnmounted, computed } from "vue";
 
 let buttons = ref([
-    { x: 10, y: 10, color: "red" },
-    { x: -10, y: 10, color: "green" },
+    { x: -10, y: 10, color: "red" },
+    { x: 10, y: 10, color: "green" },
     { x: 10, y: -10, color: "blue" },
     { x: -10, y: -10, color: "yellow" },
 ]);
@@ -39,13 +39,14 @@ const getFurthestPoint = computed(() => {
             max = distance;
         }
     }
-    return max + 2;
+    return max+2;
 });
 
 
 
 const getPossition = (x: number, y: number) => {
     const innerCircle = document.getElementById("innerCircle");
+    console.log(innerCircle.offsetWidth/2);
     
     if (!innerCircle){
         console.error("innerCircle not found");
@@ -61,14 +62,16 @@ const getPossition = (x: number, y: number) => {
     x = center + x;
     y = center - y;
 
-    // Take the size of the button itself into account
-    const buttonSize = 20; // Assuming the button size is 40px as defined in the style
-    x -= buttonSize / 2;
-    y -= buttonSize / 2;
+    console.log(x, y);  
+    const angle = Math.atan2(x - center, y - center) * (180 / Math.PI);
 
+    // ofset needet for acuret display
+    x -= 15;
+    y -= 15;
     return {
         left: x + "px",
         top: y + "px",
+        transform: "rotate(" + angle + "deg)",
     };
 };
 
@@ -104,7 +107,7 @@ const getPossition = (x: number, y: number) => {
 .vertical-line,
 .horizontal-line {
   position: absolute;
-  background-color: blue;
+  background-color: rgb(77, 77, 96);
 }
 
 .vertical-line {
