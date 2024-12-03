@@ -1,0 +1,7 @@
+-- Your SQL goes here
+CREATE TABLE EngineState (
+    id VARCHAR(255) PRIMARY KEY NOT NULL UNIQUE,
+    position INTEGER NOT NULL DEFAULT 0,
+    speed INTEGER NOT NULL DEFAULT 0,
+    direction TEXT NOT NULL DEFAULT "STOP"
+);

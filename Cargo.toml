@@ -1,7 +1,9 @@
-workspace = { members = ["db"] }
+[workspace]
+members = ["db"]
 [package]
 name = "turning_display"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+db = { path = "./db" }

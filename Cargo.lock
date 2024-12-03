@@ -254,6 +254,9 @@ dependencies = [
 [[package]]
 name = "turning_display"
 version = "0.1.0"
+dependencies = [
+ "db",
+]
 
 [[package]]
 name = "unicode-ident"
