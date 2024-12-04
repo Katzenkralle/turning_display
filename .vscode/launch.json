@@ -52,6 +52,14 @@
       },
       "args": [],
       "cwd": "${workspaceFolder}"
+    },
+    {
+      "type": "debugpy",
+      "request": "launch",
+      "name": "Python: LCD Driver",
+      "program": "${workspaceFolder}/lcd_driver/main.py",
+      "python": "${command:python.interpreterPath}",
+      "env": { "DEBUG_DEMO": "true" }
     }
   ]
 }

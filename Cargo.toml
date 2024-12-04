@@ -7,3 +7,5 @@ edition = "2021"
 
 [dependencies]
 db = { path = "./db" }
+lcd_driver = { path = "./lcd_driver" }
+rppal = "0.19.0"
