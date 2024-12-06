@@ -1,6 +1,5 @@
 use diesel::prelude::*;
 use dotenvy::dotenv;
-use schema::EngineState::{direction, position};
 use std::{any, env};
 
 pub mod models;
@@ -39,8 +38,7 @@ impl DbConn {
             .values(models::EngineState{
                 id: "main".to_string(),
                 position: 0,
-                speed: 0, 
-                direction: "stop".to_string()
+                steps_per_revolution: 200,
             })
             .execute(lock)?;
         Ok(())
@@ -84,26 +82,26 @@ impl DbConn {
     }
 
 
-    pub fn update_engine_state(&mut self, _position: i32, _direction: String) -> Result<(), diesel::result::Error> {
+    pub fn update_engine_state(&mut self, _position: i32) -> Result<(), diesel::result::Error> {
         use self::schema::EngineState::dsl::*;
         let lock = &mut *self.0.lock()
             .map_err(|_| diesel::result::Error::RollbackTransaction)?;
         diesel::update(EngineState.filter(id.eq("main")))
-            .set((position.eq(position), direction.eq(direction)))
+            .set(position.eq(position))
             .execute(lock)?;
         Ok(())
     }
 
-    pub fn update_engine_prefered_speed(&mut self, _speed: i32) -> Result<(), diesel::result::Error> {
+    
+    pub fn get_engine_state(&self) -> Result<models::EngineState, diesel::result::Error> {
         use self::schema::EngineState::dsl::*;
         let lock = &mut *self.0.lock()
             .map_err(|_| diesel::result::Error::RollbackTransaction)?;
-        diesel::update(EngineState.filter(id.eq("main")))
-            .set(speed.eq(speed))
-            .execute(lock)?;
-        Ok(())
+        let result = EngineState
+            .filter(id.eq("main"))
+            .first(lock);
+        result
     }
-    
 
 }
 

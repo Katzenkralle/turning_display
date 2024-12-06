@@ -24,6 +24,5 @@ pub struct NewLed {
 pub struct EngineState {
     pub id: String,
     pub position: i32,
-    pub speed: i32,
-    pub direction: String,
+    pub steps_per_revolution: i32,
 }

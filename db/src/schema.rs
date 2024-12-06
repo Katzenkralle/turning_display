@@ -4,8 +4,7 @@ diesel::table! {
     EngineState (id) {
         id -> Text,
         position -> Integer,
-        speed -> Integer,
-        direction -> Text,
+        steps_per_revolution -> Integer,
     }
 }
 
