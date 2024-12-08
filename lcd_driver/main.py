@@ -89,19 +89,24 @@ class Controller():
 def receive_data(sock):
     buffer = ''
     while True:
-        part = sock.recv(64).decode('utf-8')
-        buffer += part
-        if "" == part:
-            try:
-                messages = list(filter(lambda e: e != "", buffer.split("\n")))
-                return messages
-            except:
-                print("An error occured while reciving a stream.")
-                return []
+        try:
+            part = sock.recv(64).decode('utf-8')
+            buffer += part
+        except BlockingIOError:
+            part = ""
+        finally:
+            if "" == part and buffer != "":
+                try:
+                    messages = list(filter(lambda e: e != "", buffer.split("\n")))
+                    return messages
+                except:
+                    print("An error occured while reciving a stream.")
+                    return []
 
 def connection_handler(conn, addr):
     global shared_controller
-    conn.settimeout(5)
+    #conn.settimeout(5)
+    conn.setblocking(False)
     try:
         last_msg = time.time()
         while True:
@@ -114,6 +119,7 @@ def connection_handler(conn, addr):
                 except json.JSONDecodeError:
                     print("Sciping one malformed request")
                     continue
+                last_msg = time.time()
                 match req.cmd.lower():
                     case "write": 
                         if req.args.get("additive", False):
@@ -155,7 +161,7 @@ if __name__ == "__main__":
     except OSError:
         pass
     
-    if os.environ.get("DEBUG_DEMO", False):
+    if os.environ.get("DEBUG_DEMO", False) == "true":
         s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         s.bind(socket_path)
         s.listen()

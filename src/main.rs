@@ -7,6 +7,9 @@ use std::collections::HashMap;
 use rppal::gpio::{Gpio, InputPin, Level, OutputPin};
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::time::Duration;
+
+const USER_INPUT_DELAY: u64 = 200;
 
 fn rebuild_test_db() {
     const TEST_LEDS: [(i32, i32, &str); 4] = [
@@ -90,10 +93,21 @@ struct GlobalIoHandlers {
 
 trait MenuPage {
     fn watch_loop(&mut self, text: &str, option: Vec<(u8, u8)>) -> MenuPages {
+        thread::sleep(Duration::from_millis(USER_INPUT_DELAY));
         let lcd_binding = self.get_lcd();
         let gpio_binding = self.get_gpio_controller();
         let mut lcd_lock = lcd_binding.lock().unwrap();
         let gpio_lock = gpio_binding.lock().unwrap();
+
+        let _ = lcd_lock.exec(LCDCommand{
+            cmd: LCDProgramm::Clear,
+            args: None
+        });
+
+        let _ = lcd_lock.exec(LCDCommand{
+            cmd: LCDProgramm::Home,
+            args: None
+        });
 
         let _ = lcd_lock.exec(LCDCommand{
             cmd: LCDProgramm::Write,
@@ -103,27 +117,52 @@ trait MenuPage {
                 map
             })
         });
+       
+        //let _ = lcd_lock.exec(LCDCommand{
+        //    cmd: LCDProgramm::Move,
+        //    args: Some({
+        //        let mut map = HashMap::new();
+        //        map.insert("y".to_string(), LCDArg::Int(1));
+        //        map.insert("x".to_string(), LCDArg::Int(option[self.get_current_selection()].0 as i128));
+        //        map
+        //    })
+        //});
+        //let _ = lcd_lock.exec(LCDCommand{
+        //    cmd: LCDProgramm::Write,
+        //    args: Some({
+        //        let mut map = HashMap::new();
+        //        map.insert("text".to_string(), LCDArg::String("_".repeat(
+        //            (option[self.get_current_selection()].1 - option[self.get_current_selection()].0) as usize)
+        //            ));
+        //        map
+        //    })
+        //});
+        let mut last_selection: i16 = -2;
         loop {
-        let actions = [
-            (gpio_lock.home.read(), self.home_handler(option.len() as u8)),
-            (gpio_lock.left.read(), self.left_handler(option.len() as u8)),
-            (gpio_lock.right.read(), self.right_handler(option.len() as u8)),
-            (gpio_lock.enter.read(), self.enter_handler(option.len() as u8)),
-        ];
+            let actions: [(_, Box<dyn Fn(&mut Self, u8) -> Option<MenuPages>>); 4] = [
+                (gpio_lock.home.read(), Box::new(|s, o| MenuPage::home_handler(s, o))),
+                (gpio_lock.left.read(), Box::new(|s, o| MenuPage::left_handler(s, o))),
+                (gpio_lock.right.read(), Box::new(|s, o| MenuPage::right_handler(s, o))),
+                (gpio_lock.enter.read(), Box::new(|s, o| MenuPage::enter_handler(s, o))),
+            ];
+            
 
-        for (level, handler) in actions.iter() {
-            if *level == Level::High {
-                if let Some(page) = handler {
-                    self.execute_update();
-                    return *page;
+            for (i, (level, handler)) in actions.iter().enumerate() {
+                if *level == Level::Low {
+                    if let Some(page) = handler(self, option.len() as u8) {
+                        self.execute_update();
+                        return page;
+                    }    
                 }
+            }
+            if self.get_current_selection() as i16 != last_selection {
                 let c_selection = self.get_current_selection();
                 let _ = lcd_lock.exec(LCDCommand{
                     cmd: LCDProgramm::Move,
                     args: Some({
                         let mut map = HashMap::new();
+                        map.insert("y".to_string(), LCDArg::Int(1));
                         map.insert("x".to_string(), LCDArg::Int(0));
-                        map.insert("y".to_string(), LCDArg::Int(option[c_selection].0 as i128));
                         map
                     })
                 });
@@ -131,14 +170,19 @@ trait MenuPage {
                     cmd: LCDProgramm::Write,
                     args: Some({
                         let mut map = HashMap::new();
-                        map.insert("text".to_string(), LCDArg::String("_".repeat(
-                            (option[c_selection].1 - option[c_selection].0) as usize)
+                        map.insert("text".to_string(), LCDArg::String(format!("{}{}{}",
+                        " ".repeat(option[c_selection].0 as usize),
+                        "_".repeat((option[c_selection].1 - option[c_selection].0) as usize),
+                        " ".repeat((16 -  option[c_selection].1) as usize)
+                        )
                             ));
                         map
                     })
                 });
+                last_selection = self.get_current_selection() as i16;
+                thread::sleep(Duration::from_millis(USER_INPUT_DELAY));
             }
-        }
+            
         }
     }
     fn get_gpio_controller(&mut self) -> Arc<Mutex<GpioUi>>;
@@ -185,7 +229,7 @@ impl MenuPage for MainMenu {
 
     fn enter_handler(&mut self, _: u8) -> Option<MenuPages> {
         match self.current_selection {
-            0 => None,
+            0 => Some(MenuPages::ManualControll),
             1 => Some(MenuPages::SettingsMenu),
             _ => None,
         }
@@ -316,15 +360,15 @@ fn main_prosessing_loop() -> () {
         let (tx, rx) = unbounded::<String>();   
 
         let goip_ui = GpioUi {
-            home: Gpio::new().unwrap().get(17).unwrap().into_input(),
-            left: Gpio::new().unwrap().get(27).unwrap().into_input(),
-            right: Gpio::new().unwrap().get(22).unwrap().into_input(),
-            enter: Gpio::new().unwrap().get(24).unwrap().into_input(),
+            home: Gpio::new().unwrap().get(23).unwrap().into_input_pullup(),
+            left: Gpio::new().unwrap().get(25).unwrap().into_input_pullup(),
+            right: Gpio::new().unwrap().get(22).unwrap().into_input_pullup(),
+            enter: Gpio::new().unwrap().get(24).unwrap().into_input_pullup(),
         };
         let gpio_engine = GpioEngine {
-            dir: Gpio::new().unwrap().get(23).unwrap().into_output(),
-            step: Gpio::new().unwrap().get(25).unwrap().into_output(),
-            ena: Gpio::new().unwrap().get(12).unwrap().into_output(),
+            dir: Gpio::new().unwrap().get(20).unwrap().into_output(),
+            step: Gpio::new().unwrap().get(21).unwrap().into_output(),
+            ena: Gpio::new().unwrap().get(16).unwrap().into_output(),
         };
 
         let mut menu_page_thread: Option<JoinHandle<MenuPages>> = None;
@@ -338,7 +382,7 @@ fn main_prosessing_loop() -> () {
             db: Arc::new(Mutex::new(DbConn::establish_connection())),
             broadcast_receiver: rx,
         };
-
+        println!("Entering main loop");
         loop {
             // Handle completed threads
             if let Some(thread) = menu_page_thread.take() {
@@ -350,6 +394,7 @@ fn main_prosessing_loop() -> () {
             }
             
             // Match the requested menu and start a new thread
+            println!("Spawning new {:?}", &requested_menu);
             let _global_io = global_io.clone();
             menu_page_thread = Some(match requested_menu {
                 MenuPages::MainMenu => 
@@ -357,13 +402,13 @@ fn main_prosessing_loop() -> () {
                         MainMenu {
                         global_io: _global_io,
                         current_selection: 0,
-                    }.watch_loop("<Ctrl.     Set.>", vec![(0, 6), (12, 15)])}),         
+                    }.watch_loop("<Ctrl.     Set.>", vec![(0, 6), (11, 16)])}),         
                 MenuPages::SettingsMenu => 
                     thread::spawn(move || {
                         SettingsMenu {
                             global_io: _global_io,
                             current_selection: 0,
-                        }.watch_loop("<  Automatic ON?", vec![(0, 1), (12, 15)])
+                        }.watch_loop("<  Automatic ON?", vec![(0, 1), (13, 16)])
                     }),
                 MenuPages::ManualControll => 
                     thread::spawn(move || {
@@ -372,7 +417,7 @@ fn main_prosessing_loop() -> () {
                             global_io: _global_io.clone(),
                             current_selection: 0,
                             position: engine_state.position as u8,
-                        }.watch_loop("<UP  SAVE  DOWN>", vec![(0, 2), (4, 8), (10, 15)])
+                        }.watch_loop("<UP  SAVE  DOWN>", vec![(0, 3), (5, 9), (11, 16)])
                     }),
             });
         }

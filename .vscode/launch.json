@@ -4,7 +4,7 @@
   // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
   "version": "0.2.0",
   "configurations": [
-    {
+    /*{
       "type": "lldb",
       "request": "launch",
       "name": "Debug unit tests in library 'db'",
@@ -18,7 +18,7 @@
       "args": [],
       "cwd": "${workspaceFolder}",
       "envFile": "${workspaceFolder}/.env"
-    },
+    },*/
     {
       "type": "lldb",
       "request": "launch",
@@ -34,7 +34,7 @@
       "cwd": "${workspaceFolder}",
       "envFile": "${workspaceFolder}/.env"
     },
-    {
+    /*{
       "type": "lldb",
       "request": "launch",
       "name": "Debug unit tests in executable 'turning_display'",
@@ -52,14 +52,14 @@
       },
       "args": [],
       "cwd": "${workspaceFolder}"
-    },
+    },*/
     {
       "type": "debugpy",
       "request": "launch",
       "name": "Python: LCD Driver",
       "program": "${workspaceFolder}/lcd_driver/main.py",
-      "python": "${command:python.interpreterPath}",
-      "env": { "DEBUG_DEMO": "true" }
+      "python": "${workspaceFolder}/lcd_driver/venv/bin/python",
+      "env": { "DEBUG_DEMO": "false" }
     }
   ]
 }
