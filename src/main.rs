@@ -11,7 +11,7 @@ use std::time::Duration;
 
 
 mod ui_pages;
-use ui_pages::{man_ctrl::ManualControllPage, menu::MainMenu, settings::SettingsMenu, led_ctrl::LedCtrlPage, UiPages, MenuPage};
+use ui_pages::{man_ctrl::ManualControllPage, menu::MainMenu, settings::SettingsMenu, led_ctrl::LedCtrlPage, UiPages, MenuPage, ReactivePage};
 
 const USER_INPUT_DELAY: u64 = 200;
 // Pinout:
@@ -122,15 +122,15 @@ fn main_prosessing_loop() -> () {
                         MainMenu {
                         global_io: _global_io,
                         current_selection: 0,
-                        return_to: vec![UiPages::Menu2, UiPages::ManualControll, UiPages::SettingsMenu],
-                    }.watch_loop("< mPos.   Led. >", vec![(0,1), (2, 8), (9, 14)])}),  
+                        return_to: vec![UiPages::Menu2, UiPages::ManualControll, UiPages::LedColor],
+                    }.watch_loop("< mPos.   Led. >", vec![(0,1), (2, 7), (10, 14)])}),  
                 UiPages::Menu2 =>
                     thread::spawn(move || {
                         MainMenu {
                             global_io: _global_io,
                             current_selection: 0,
                             return_to: vec![UiPages::ManualControll, UiPages::SettingsMenu, UiPages::Menu1],
-                        }.watch_loop("  Sav.   Set.  >", vec![(2, 8), (9, 14), (15, 16)])}),       
+                        }.watch_loop("  Sav.   Set.  >", vec![(2, 6), (9, 13), (15, 16)])}),       
                 UiPages::SettingsMenu => 
                     thread::spawn(move || {
                         SettingsMenu {
@@ -157,7 +157,7 @@ fn main_prosessing_loop() -> () {
                             color: Some(led_state[0].color.clone()),
                             brightness: None,
                             mode: None,
-                        }.watch_loop("<^   Color    v>", vec![(0, 1), (1, 2), (14, 15), (15, 16)])
+                        }.reactive_watch("<^   Color    v>", vec![(0, 1), (1, 2), (14, 15), (15, 16)])
                     }),
                 UiPages::LedBrightness =>
                     thread::spawn(move || {
@@ -169,7 +169,7 @@ fn main_prosessing_loop() -> () {
                             color: None,
                             brightness: Some(led_state[0].brightness as u8),
                             mode: None,
-                        }.watch_loop("<^ Brightness v>", vec![(0, 1), (1, 2), (14, 15), (15, 16)])
+                        }.reactive_watch("<^ Brightness v>", vec![(0, 1), (1, 2), (14, 15), (15, 16)])
                     }),
                 UiPages::LedMode =>
                     thread::spawn(move || {
@@ -181,7 +181,7 @@ fn main_prosessing_loop() -> () {
                             color: None,
                             brightness: None,
                             mode: Some(led_state[0].mode.clone()),
-                        }.watch_loop("<^    Mode    v>", vec![(0, 1), (1, 2), (14, 15), (15, 16)])
+                        }.reactive_watch("<^    Mode    v>", vec![(0, 1), (1, 2), (14, 15), (15, 16)])
                     }),
             });
         }

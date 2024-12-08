@@ -110,9 +110,11 @@ impl MenuPage for LedCtrlPage {
         match self.current_selection {
            1 => {
                if let Some(rgb_coler) = &self.color {
-                    let mut hsl_color = rgb_to_hsl(rgb_coler[..1].parse().unwrap(),
-                        rgb_coler[2..3].parse().unwrap(),
-                        rgb_coler[4..5].parse().unwrap());
+                    let mut hsl_color = rgb_to_hsl(
+                        u8::from_str_radix(&rgb_coler[0..1], 16).unwrap(),
+                        u8::from_str_radix(&rgb_coler[2..3], 16).unwrap(),
+                        u8::from_str_radix(&rgb_coler[4..5], 16).unwrap(),
+                    );
                     hsl_color.0 = (hsl_color.0 + 10.0).rem_euclid(360.0);
                     userinfo = hsl_color.0.to_string();
                     self.color = Some(hsl_to_rgb_string(hsl_color.0, hsl_color.1, hsl_color.2));
@@ -124,9 +126,11 @@ impl MenuPage for LedCtrlPage {
               },
             2 => {
             if let Some(rgb_coler) = &self.color {
-                    let mut hsl_color = rgb_to_hsl(rgb_coler[..1].parse().unwrap(),
-                        rgb_coler[2..3].parse().unwrap(),
-                        rgb_coler[4..5].parse().unwrap());
+                let mut hsl_color = rgb_to_hsl(
+                    u8::from_str_radix(&rgb_coler[0..1], 16).unwrap(),
+                    u8::from_str_radix(&rgb_coler[2..3], 16).unwrap(),
+                    u8::from_str_radix(&rgb_coler[4..5], 16).unwrap(),
+                );
                     hsl_color.0 = (hsl_color.0 - 10.0).rem_euclid(360.0);
                     userinfo = hsl_color.0.to_string();
                     self.color = Some(hsl_to_rgb_string(hsl_color.0, hsl_color.1, hsl_color.2));
@@ -167,7 +171,7 @@ impl MenuPage for LedCtrlPage {
 }
 
 impl ReactivePage for LedCtrlPage {
-    fn loop_hook(&mut self) -> () {
+    fn pree_loop_hook(&mut self) -> () {
         let mut lcd_lock = self.global_io.lcd.lock().unwrap();
         let _ = lcd_lock.exec(LCDCommand{
             cmd: LCDProgramm::Move,
@@ -189,7 +193,7 @@ impl ReactivePage for LedCtrlPage {
                 map
             })
         });
-        // |<^ xxxxxxxxxx v>|
+        // |<^ xxxxxxxxxx v>
     }
     
 }

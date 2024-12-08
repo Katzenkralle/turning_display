@@ -143,8 +143,8 @@ pub (crate) trait ReactivePage: MenuPage + 'static {
     fn change_hook(&mut self) -> (){}
     fn pree_loop_hook(&mut self) -> (){}
 
-    fn watch_loop(&mut self, text: &str, option: Vec<(u8, u8)>) -> UiPages {
-        self.main_handler(text, option, Some(Box::new(Self::change_hook)), Some(Box::new(Self::loop_hook)), Some(Box::new(Self::pree_loop_hook)))
+    fn reactive_watch(&mut self, text: &str, option: Vec<(u8, u8)>) -> UiPages {
+        self.main_handler(text, option, Some(Box::new(Self::pree_loop_hook)), Some(Box::new(Self::loop_hook)), Some(Box::new(Self::change_hook)))
     }
     
 }
