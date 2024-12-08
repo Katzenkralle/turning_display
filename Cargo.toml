@@ -10,3 +10,4 @@ db = { path = "./db" }
 lcd_driver = { path = "./lcd_driver" }
 rppal = "0.19.0"
 crossbeam = "0.8.4"
+colors-transform = "0.2.11"

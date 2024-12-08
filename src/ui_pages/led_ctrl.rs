@@ -6,13 +6,14 @@ use crate::HashMap;
 use crate::GlobalIoHandlers;
 use crate::ui_pages::{ReactivePage, MenuPage, UiPages};
 use crate::{LCDCommand, LCDArg, LCDProgramm};
+use colors_transform::{Color, Hsl, Rgb};
 
 
-
-fn rgb_to_hsl(r: u8, g: u8, b: u8) -> (f32, f32, f32) {
-    let r = r as f32 / 255.0;
-    let g = g as f32 / 255.0;
-    let b = b as f32 / 255.0;
+fn rgb_to_hsl(hex: &String) -> (f32, f32, f32) {
+    
+    let r = u8::from_str_radix(&hex[0..1], 16).unwrap() as f32 / 255.0;
+    let g = u8::from_str_radix(&hex[2..3], 16).unwrap() as f32 / 255.0;
+    let b = u8::from_str_radix(&hex[4..5], 16).unwrap() as f32 / 255.0;
 
     let max = r.max(g).max(b);
     let min = r.min(g).min(b);
@@ -69,16 +70,15 @@ fn hsl_to_rgb_string(h: f32, s: f32, l: f32) -> String {
     format!("{r:02x}{g:02x}{b:02x}")
 }
 
-
-
 pub (crate) struct LedCtrlPage {
     pub (crate) global_io: GlobalIoHandlers,
     pub (crate) current_selection: usize,
     
     pub (crate) return_to: Vec<(usize, UiPages)>, // (selection, page)
-    pub (crate) color: Option<String>,
-    pub (crate) brightness: Option<u8>,
-    pub (crate) mode: Option<String>,
+    pub (crate) color: String,
+    pub (crate) brightness: u8,
+    pub (crate) mode: String,
+    pub (crate) setting: UiPages
 }
 
 impl MenuPage for LedCtrlPage {
@@ -102,76 +102,51 @@ impl MenuPage for LedCtrlPage {
     fn execute_update(&mut self) -> () {
         let db_lock = self.global_io.db.lock().unwrap();
         let led = db_lock.get_leds(None).unwrap().iter().map(|x| x.id).collect();
-        db_lock.update_led(led, self.color.as_ref(), self.brightness, self.mode.as_ref()).unwrap();
+        db_lock.update_led(led, Some(&self.color), Some(self.brightness), Some(&self.mode)).unwrap();
     }
 
     fn enter_handler(&mut self, _: u8) -> Option<UiPages> {
-        let mut userinfo = "".to_string();
         match self.current_selection {
            1 => {
-               if let Some(rgb_coler) = &self.color {
-                    let mut hsl_color = rgb_to_hsl(
-                        u8::from_str_radix(&rgb_coler[0..1], 16).unwrap(),
-                        u8::from_str_radix(&rgb_coler[2..3], 16).unwrap(),
-                        u8::from_str_radix(&rgb_coler[4..5], 16).unwrap(),
-                    );
-                    hsl_color.0 = (hsl_color.0 + 10.0).rem_euclid(360.0);
-                    userinfo = hsl_color.0.to_string();
-                    self.color = Some(hsl_to_rgb_string(hsl_color.0, hsl_color.1, hsl_color.2));
-                }
-                if let Some(bright) = self.brightness {
-                    self.brightness = Some((bright + 10).min(100));
-                    userinfo = bright.to_string();
-                }
-              },
-            2 => {
-            if let Some(rgb_coler) = &self.color {
-                let mut hsl_color = rgb_to_hsl(
-                    u8::from_str_radix(&rgb_coler[0..1], 16).unwrap(),
-                    u8::from_str_radix(&rgb_coler[2..3], 16).unwrap(),
-                    u8::from_str_radix(&rgb_coler[4..5], 16).unwrap(),
-                );
-                    hsl_color.0 = (hsl_color.0 - 10.0).rem_euclid(360.0);
-                    userinfo = hsl_color.0.to_string();
-                    self.color = Some(hsl_to_rgb_string(hsl_color.0, hsl_color.1, hsl_color.2));
-                }
-                if let Some(bright) = self.brightness {
-                    self.brightness = Some((bright - 10).max(0));
-                    userinfo = bright.to_string();
-                }
+            match self.setting {
+                UiPages::LedColor => {
+                
+                        let hsl_color = Rgb::from_hex_str(&self.color).unwrap().to_hsl();
+                        let hsl_color = Hsl::from((hsl_color.get_hue() + 10.0).min(359.0), hsl_color.get_saturation(), hsl_color.get_lightness());
+                        self.color = format!("{:02x}{:02x}{:02x}", hsl_color.get_red() as u8, hsl_color.get_green() as u8, hsl_color.get_blue() as u8);
+                    
+                },
+                UiPages::LedBrightness => {
+                    self.brightness = (self.brightness + 10).min(100);
+                },
+                _ => {}
+            }
+        },
+        2 => {
+            match self.setting {
+                UiPages::LedColor => {
+                        let hsl_color = Rgb::from_hex_str(&self.color).unwrap().to_hsl();
+                        let hsl_color = Hsl::from((hsl_color.get_hue() - 10.0).min(359.0), hsl_color.get_saturation(), hsl_color.get_lightness());
+                        self.color = format!("{:02x}{:02x}{:02x}", hsl_color.get_red() as u8, hsl_color.get_green() as u8, hsl_color.get_blue() as u8);
+                    
+                },
+                UiPages::LedBrightness => {
+                    self.brightness = (self.brightness - 10).max(0);
+                },
+                _ => {}
+            }
             },
            _ => {
                 return self.return_to.iter().find(|x| x.0 == self.current_selection).map(|x| x.1);
            }
         }
-        let mut lcd_lock = self.global_io.lcd.lock().unwrap();
-        let _ = lcd_lock.exec(LCDCommand{
-            cmd: LCDProgramm::Move,
-            args: Some({
-                let mut map = HashMap::new();
-                map.insert("y".to_string(), LCDArg::Int(1));
-                map.insert("x".to_string(), LCDArg::Int(4));
-                map
-            })
-        });
-        let _ = lcd_lock.exec(LCDCommand{
-            cmd: LCDProgramm::Write,
-            args: Some({
-                let mut map = HashMap::new();
-                map.insert("text".to_string(), LCDArg::String(format!("{}",
-                    userinfo
-                )
-                    ));
-                map
-            })
-        });
         // |<^ xxxxxxxxxx v>|
         None
     }
 }
 
-impl ReactivePage for LedCtrlPage {
-    fn pree_loop_hook(&mut self) -> () {
+impl LedCtrlPage {
+    fn print_user_info(&mut self) -> (){
         let mut lcd_lock = self.global_io.lcd.lock().unwrap();
         let _ = lcd_lock.exec(LCDCommand{
             cmd: LCDProgramm::Move,
@@ -182,17 +157,37 @@ impl ReactivePage for LedCtrlPage {
                 map
             })
         });
+
+        let info = match self.setting {
+            UiPages::LedColor => {
+            format!("{:03}/360", Rgb::from_hex_str(&self.color).unwrap().to_hsl().get_hue() as u8)
+            },
+            UiPages::LedBrightness => {
+            format!("{:03}%", self.brightness)
+            },
+            _ => {
+            format!("NA")
+            }
+        };
+        
         let _ = lcd_lock.exec(LCDCommand{
             cmd: LCDProgramm::Write,
             args: Some({
                 let mut map = HashMap::new();
-                map.insert("text".to_string(), LCDArg::String(format!("{}",
-                    "Her"
-                )
-                    ));
+                map.insert("text".to_string(), LCDArg::String(info));
                 map
             })
         });
+    }
+}
+
+impl ReactivePage for LedCtrlPage {
+    fn pree_loop_hook(&mut self) -> () {
+        self.print_user_info()
+        // |<^ xxxxxxxxxx v>
+    }
+    fn change_hook(&mut self) -> () {
+        self.print_user_info()
         // |<^ xxxxxxxxxx v>
     }
     

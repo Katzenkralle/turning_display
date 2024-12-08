@@ -154,9 +154,10 @@ fn main_prosessing_loop() -> () {
                             global_io: _global_io,
                             current_selection: 0,
                             return_to: vec![(0, UiPages::LedBrightness), (3, UiPages::LedMode)],
-                            color: Some(led_state[0].color.clone()),
-                            brightness: None,
-                            mode: None,
+                            color: led_state[0].color.clone(),
+                            brightness: led_state[0].brightness as u8,
+                            mode: led_state[0].mode.clone(),
+                            setting: UiPages::LedColor
                         }.reactive_watch("<^   Color    v>", vec![(0, 1), (1, 2), (14, 15), (15, 16)])
                     }),
                 UiPages::LedBrightness =>
@@ -165,10 +166,11 @@ fn main_prosessing_loop() -> () {
                         LedCtrlPage {
                             global_io: _global_io,
                             current_selection: 0,
-                            return_to: vec![(0, UiPages::LedColor), (3, UiPages::LedMode)],
-                            color: None,
-                            brightness: Some(led_state[0].brightness as u8),
-                            mode: None,
+                            return_to: vec![(0, UiPages::LedMode), (3, UiPages::LedColor)],
+                            color: led_state[0].color.clone(),
+                            brightness: led_state[0].brightness as u8,
+                            mode: led_state[0].mode.clone(),
+                            setting: UiPages::LedBrightness,
                         }.reactive_watch("<^ Brightness v>", vec![(0, 1), (1, 2), (14, 15), (15, 16)])
                     }),
                 UiPages::LedMode =>
@@ -178,9 +180,10 @@ fn main_prosessing_loop() -> () {
                             global_io: _global_io,
                             current_selection: 0,
                             return_to: vec![(0, UiPages::LedColor), (3, UiPages::LedBrightness)],
-                            color: None,
-                            brightness: None,
-                            mode: Some(led_state[0].mode.clone()),
+                            color: led_state[0].color.clone(),
+                            brightness: led_state[0].brightness as u8,
+                            mode: led_state[0].mode.clone(),
+                            setting: UiPages::LedMode,
                         }.reactive_watch("<^    Mode    v>", vec![(0, 1), (1, 2), (14, 15), (15, 16)])
                     }),
             });

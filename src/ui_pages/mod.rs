@@ -32,20 +32,20 @@ pub (crate) trait MenuPage {
         thread::sleep(Duration::from_millis(USER_INPUT_DELAY));
         let lcd_binding = self.get_lcd();
         let gpio_binding = self.get_gpio_controller();
-        let mut lcd_lock = lcd_binding.lock().unwrap();
+        let mut lcd_lock = Some(lcd_binding.lock().unwrap());
         let gpio_lock = gpio_binding.lock().unwrap();
 
-        let _ = lcd_lock.exec(LCDCommand{
+        let _ = lcd_lock.as_mut().unwrap().exec(LCDCommand{
             cmd: LCDProgramm::Clear,
             args: None
         });
 
-        let _ = lcd_lock.exec(LCDCommand{
+        let _ = lcd_lock.as_mut().unwrap().exec(LCDCommand{
             cmd: LCDProgramm::Home,
             args: None
         });
 
-        let _ = lcd_lock.exec(LCDCommand{
+        let _ = lcd_lock.as_mut().unwrap().exec(LCDCommand{
             cmd: LCDProgramm::Write,
             args: Some({
                 let mut map = HashMap::new();
@@ -53,11 +53,9 @@ pub (crate) trait MenuPage {
                 map
             })
         });
-        if let Some(func) = pree_loop_hook {
-            func(self);
-        }
         let mut last_selection: i16 = -2;
         loop {
+            let mut change = false;
             let actions: [(_, Box<dyn Fn(&mut Self, u8) -> Option<UiPages>>); 4] = [
                 (gpio_lock.home.read(), Box::new(|s, o| MenuPage::home_handler(s, o))),
                 (gpio_lock.left.read(), Box::new(|s, o| MenuPage::left_handler(s, o))),
@@ -66,7 +64,9 @@ pub (crate) trait MenuPage {
             ];
             
             if let Some(ref func) = loop_hook {
+                lcd_lock = None;
                 func(self);
+                lcd_lock = Some(lcd_binding.lock().unwrap());
             }
             for (level, handler) in actions.iter() {
                 if *level == Level::Low {
@@ -74,14 +74,12 @@ pub (crate) trait MenuPage {
                         self.execute_update();
                         return page;
                     }
-                    if let Some(ref func) = change_hook{
-                        func(self);
-                    }
+                    change = true;
                 }
             }
             if self.get_current_selection() as i16 != last_selection {
                 let c_selection = self.get_current_selection();
-                let _ = lcd_lock.exec(LCDCommand{
+                let _ = lcd_lock.as_mut().unwrap().exec(LCDCommand{
                     cmd: LCDProgramm::Move,
                     args: Some({
                         let mut map = HashMap::new();
@@ -90,7 +88,7 @@ pub (crate) trait MenuPage {
                         map
                     })
                 });
-                let _ = lcd_lock.exec(LCDCommand{
+                let _ = lcd_lock.as_mut().unwrap().exec(LCDCommand{
                     cmd: LCDProgramm::Write,
                     args: Some({
                         let mut map = HashMap::new();
@@ -103,8 +101,23 @@ pub (crate) trait MenuPage {
                         map
                     })
                 });
+                if last_selection == -2 {
+                    if let Some(ref func) = pree_loop_hook {
+                        lcd_lock = None;
+                        func(self);
+                        lcd_lock = Some(lcd_binding.lock().unwrap());
+                    }
+                }
                 last_selection = self.get_current_selection() as i16;
+            }
+            if change {
+                if let Some(ref func) = change_hook {
+                    lcd_lock = None;
+                    func(self);
+                    lcd_lock = Some(lcd_binding.lock().unwrap());
+                }
                 thread::sleep(Duration::from_millis(USER_INPUT_DELAY));
+
             }
             
         }
