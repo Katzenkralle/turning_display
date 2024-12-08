@@ -1,21 +1,13 @@
 use diesel::prelude::*;
 
 #[derive(Debug)]
-#[derive(Queryable, Selectable, AsChangeset)]
+#[derive(Queryable, Selectable, Insertable, AsChangeset)]
 #[diesel(table_name = crate::schema::Led)]
 pub struct Led {
     pub id: i32,
-    pub px: i32,
-    pub py: i32,
     pub color: String,
-}
-
-#[derive(Insertable)]
-#[diesel(table_name = crate::schema::Led)]
-pub struct NewLed {
-    pub px: i32,
-    pub py: i32,
-    pub color: String,
+    pub brightness: i32,
+    pub mode: String,
 }
 
 #[derive(Debug)]

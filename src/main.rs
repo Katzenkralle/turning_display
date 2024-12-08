@@ -11,31 +11,9 @@ use std::time::Duration;
 
 
 mod ui_pages;
-use ui_pages::{man_ctrl::ManualControllPage, menu::MainMenu, settings::SettingsMenu, UiPages, MenuPage};
+use ui_pages::{man_ctrl::ManualControllPage, menu::MainMenu, settings::SettingsMenu, led_ctrl::LedCtrlPage, UiPages, MenuPage};
 
 const USER_INPUT_DELAY: u64 = 200;
-
-fn rebuild_test_db() {
-    const TEST_LEDS: [(i32, i32, &str); 4] = [
-        (10, 10, "#ff0000"),
-        (10, -10, "#00ff00"),
-        (-10, 10, "#0000ff"),
-        (-10, -10, "#ffffff"),
-    ];
-    
-    let mut connection = DbConn::establish_connection();
-    let led = connection.get_leds(None).unwrap();
-    led.iter().for_each(|l| {
-        connection.del_led(l.id).expect("Error deleting led");
-    });
-
-    for (x, y, color) in TEST_LEDS.iter() {
-        connection.add_led(*x, *y, color.to_string()).expect("Error adding led");
-    }
-}
-
-
-
 // Pinout:
 // Home > 17
 // Left > 27
@@ -169,6 +147,42 @@ fn main_prosessing_loop() -> () {
                             position: engine_state.position as u8,
                         }.watch_loop("<UP  SAVE  DOWN>", vec![(0, 3), (5, 9), (11, 16)])
                     }),
+                UiPages::LedColor =>
+                    thread::spawn(move || {
+                        let led_state = _global_io.db.lock().unwrap().get_leds(None).unwrap();
+                        LedCtrlPage {
+                            global_io: _global_io,
+                            current_selection: 0,
+                            return_to: vec![(0, UiPages::LedBrightness), (3, UiPages::LedMode)],
+                            color: Some(led_state[0].color.clone()),
+                            brightness: None,
+                            mode: None,
+                        }.watch_loop("<^   Color    v>", vec![(0, 1), (1, 2), (14, 15), (15, 16)])
+                    }),
+                UiPages::LedBrightness =>
+                    thread::spawn(move || {
+                        let led_state = _global_io.db.lock().unwrap().get_leds(None).unwrap();
+                        LedCtrlPage {
+                            global_io: _global_io,
+                            current_selection: 0,
+                            return_to: vec![(0, UiPages::LedColor), (3, UiPages::LedMode)],
+                            color: None,
+                            brightness: Some(led_state[0].brightness as u8),
+                            mode: None,
+                        }.watch_loop("<^ Brightness v>", vec![(0, 1), (1, 2), (14, 15), (15, 16)])
+                    }),
+                UiPages::LedMode =>
+                    thread::spawn(move || {
+                        let led_state = _global_io.db.lock().unwrap().get_leds(None).unwrap();
+                        LedCtrlPage {
+                            global_io: _global_io,
+                            current_selection: 0,
+                            return_to: vec![(0, UiPages::LedColor), (3, UiPages::LedBrightness)],
+                            color: None,
+                            brightness: None,
+                            mode: Some(led_state[0].mode.clone()),
+                        }.watch_loop("<^    Mode    v>", vec![(0, 1), (1, 2), (14, 15), (15, 16)])
+                    }),
             });
         }
     }
@@ -177,6 +191,5 @@ fn main_prosessing_loop() -> () {
 
 
 fn main() {
-    rebuild_test_db();
     main_prosessing_loop();
 }

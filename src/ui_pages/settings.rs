@@ -19,9 +19,13 @@ impl MenuPage for SettingsMenu {
         self.global_io.gpio_ui.clone()
     }
 
-    fn execute_update(&mut self) -> () {
-        
+    fn execute_update(&mut self) -> () {  
     }
+
+    fn set_current_selection(&mut self, selection: usize) -> () {
+        self.current_selection = selection;
+    }
+
     fn get_current_selection(&self) -> usize {
         self.current_selection
     }
@@ -33,16 +37,4 @@ impl MenuPage for SettingsMenu {
         Some(UiPages::Menu1)
     }
 
-    fn left_handler(&mut self, _: u8) -> Option<UiPages> {
-        if self.current_selection > 0 {
-            self.current_selection -= 1;
-        }
-        None
-    }
-    fn right_handler(&mut self, options_len: u8) -> Option<UiPages> {
-        if self.current_selection < options_len as usize - 1 {
-            self.current_selection += 1;
-        }
-        None
-    }
 }

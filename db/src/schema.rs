@@ -11,9 +11,9 @@ diesel::table! {
 diesel::table! {
     Led (id) {
         id -> Integer,
-        px -> Integer,
-        py -> Integer,
         color -> Text,
+        brightness -> Integer,
+        mode -> Text,
     }
 }
 

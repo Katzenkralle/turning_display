@@ -1,14 +1,11 @@
 use diesel::prelude::*;
 use dotenvy::dotenv;
-use std::{any, env};
+use std::env;
 
 pub mod models;
 pub mod schema;
 
-use self::models::{NewLed, Led};
 
-use std::fmt;
-use any::Any;
 use std::sync::{Arc, Mutex};
 
 
@@ -21,7 +18,8 @@ impl DbConn {
         let connection = SqliteConnection::establish(&database_url)
             .expect(&format!("Error connecting to {}", database_url));
         let conn = Self(Arc::new(Mutex::new(connection)));
-        conn.init_engine_state().expect("Failed to initialize engine state");
+        conn.init_engine_state().expect("Failed to initialize engine state in db");
+        conn.init_led_state().expect("Failed to initialize led state in db");
         conn
     }
 
@@ -44,28 +42,28 @@ impl DbConn {
         Ok(())
     }
 
-
-    pub fn add_led(&mut self, x: i32, y: i32, _color: String) 
-        -> Result<(), diesel::result::Error> {
-        use self::schema::Led::dsl::*;
-
-        let new_led = models::NewLed{ px: x, py: y, color: _color};
-        let lock = &mut * self.0.lock()
-            .map_err(|_| diesel::result::Error::RollbackTransaction)?;
-        diesel::insert_into(Led)
-            .values(new_led)
-            .execute(lock)?;
-        Ok(())
-    }
-
-    pub fn del_led(&mut self, index: i32) -> Result<(), diesel::result::Error> {
+    fn init_led_state(&self) -> Result<(), diesel::result::Error> {
         use self::schema::Led::dsl::*;
         let lock = &mut *self.0.lock()
             .map_err(|_| diesel::result::Error::RollbackTransaction)?;
-        diesel::delete(Led.filter(id.eq(index)))
-            .execute(lock)?;
+
+        // we neet to declare models::Led here because we have a name conflict with the Table Led
+        if  Led.load::<models::Led>(lock)?.len() > 0 {
+            return Ok(());
+        }
+        for i in 0..69 {
+            diesel::insert_into(Led)
+                .values(models::Led{
+                    id: i,
+                    color: "#ff0000".to_string(),
+                    brightness: 10,
+                    mode: "solid".to_string(),
+                })
+                .execute(lock)?;
+        }
         Ok(())
     }
+
 
     pub fn get_leds(&self, index: Option<i32>) -> Result<Vec<models::Led>, diesel::result::Error> {
         use self::schema::Led::dsl::*;
@@ -81,13 +79,36 @@ impl DbConn {
         Ok(results)
     }
 
+    pub fn update_led(&self, _id: Vec<i32>, _color: Option<&String>, _brightness: Option<u8>, _mode: Option<&String>) -> Result<(), diesel::result::Error> {
+        use self::schema::Led::dsl::*;
+        // todo: use dynamic query builder
+        let lock = &mut *self.0.lock()
+            .map_err(|_| diesel::result::Error::RollbackTransaction)?;
+        if let Some(_color) = _color {
+            diesel::update(Led.filter(id.eq_any(_id.clone())))
+                .set(color.eq(_color))
+                .execute(lock)?;
+        }
+        if let Some(_brightness) = _brightness {
+            diesel::update(Led.filter(id.eq_any(_id.clone())))
+                .set(brightness.eq(_brightness as i32))
+                .execute(lock)?;
+        }
+        if let Some(_mode) = _mode {
+            diesel::update(Led.filter(id.eq_any(_id)))
+                .set(mode.eq(_mode))
+                .execute(lock)?;
+        }
+        Ok(())
+    }
+
 
     pub fn update_engine_state(&mut self, _position: i32) -> Result<(), diesel::result::Error> {
         use self::schema::EngineState::dsl::*;
         let lock = &mut *self.0.lock()
             .map_err(|_| diesel::result::Error::RollbackTransaction)?;
         diesel::update(EngineState.filter(id.eq("main")))
-            .set(position.eq(position))
+            .set(position.eq(_position))
             .execute(lock)?;
         Ok(())
     }

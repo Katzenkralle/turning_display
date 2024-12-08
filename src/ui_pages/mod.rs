@@ -2,6 +2,8 @@
 pub (crate) mod man_ctrl;
 pub (crate) mod menu;
 pub (crate) mod settings;
+pub(crate) mod led_ctrl;
+
 use crate::Duration;
 use crate::thread;
 use crate::Level;
@@ -16,6 +18,9 @@ use crate::USER_INPUT_DELAY;
 pub (crate) enum UiPages {
     Menu1,
     Menu2,
+    LedColor,
+    LedBrightness,
+    LedMode,
     SettingsMenu,
     ManualControll,
 }
@@ -49,25 +54,6 @@ pub (crate) trait MenuPage {
             })
         });
        
-        //let _ = lcd_lock.exec(LCDCommand{
-        //    cmd: LCDProgramm::Move,
-        //    args: Some({
-        //        let mut map = HashMap::new();
-        //        map.insert("y".to_string(), LCDArg::Int(1));
-        //        map.insert("x".to_string(), LCDArg::Int(option[self.get_current_selection()].0 as i128));
-        //        map
-        //    })
-        //});
-        //let _ = lcd_lock.exec(LCDCommand{
-        //    cmd: LCDProgramm::Write,
-        //    args: Some({
-        //        let mut map = HashMap::new();
-        //        map.insert("text".to_string(), LCDArg::String("_".repeat(
-        //            (option[self.get_current_selection()].1 - option[self.get_current_selection()].0) as usize)
-        //            ));
-        //        map
-        //    })
-        //});
         let mut last_selection: i16 = -2;
         loop {
             let actions: [(_, Box<dyn Fn(&mut Self, u8) -> Option<UiPages>>); 4] = [
@@ -78,7 +64,7 @@ pub (crate) trait MenuPage {
             ];
             
 
-            for (i, (level, handler)) in actions.iter().enumerate() {
+            for (level, handler) in actions.iter() {
                 if *level == Level::Low {
                     if let Some(page) = handler(self, option.len() as u8) {
                         self.execute_update();
@@ -119,10 +105,23 @@ pub (crate) trait MenuPage {
     fn get_gpio_controller(&mut self) -> Arc<Mutex<GpioUi>>;
     fn get_lcd(&mut self) -> Arc<Mutex<LCDdriver>>;
     fn get_current_selection(&self) -> usize;
+    fn set_current_selection(&mut self, selection: usize) -> ();
     fn execute_update(&mut self) -> ();
 
-    fn home_handler(&mut self, options_len: u8) -> Option<UiPages>;
-    fn left_handler(&mut self, options_len: u8) -> Option<UiPages>;
-    fn right_handler(&mut self, options_len: u8) -> Option<UiPages>;
+    fn home_handler(&mut self, options_len: u8) -> Option<UiPages> {
+        Some(UiPages::Menu1)
+    }
+    fn left_handler(&mut self, options_len: u8) -> Option<UiPages>{
+        if self.get_current_selection() > 0 {
+            self.set_current_selection(self.get_current_selection() - 1);
+        }
+        None
+    }
+    fn right_handler(&mut self, options_len: u8) -> Option<UiPages> {
+        if self.get_current_selection() < options_len as usize - 1 {
+            self.set_current_selection(self.get_current_selection() + 1);
+        }
+        None
+    }
     fn enter_handler(&mut self, options_len: u8) -> Option<UiPages>;
 }
