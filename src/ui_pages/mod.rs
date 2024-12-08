@@ -26,9 +26,9 @@ pub (crate) enum UiPages {
 }
 
 
-
 pub (crate) trait MenuPage {
-    fn watch_loop(&mut self, text: &str, option: Vec<(u8, u8)>) -> UiPages {
+    fn main_handler(&mut self, text: &str, option: Vec<(u8, u8)>, pree_loop_hook: Option<Box<dyn Fn(&mut Self) -> ()>>, loop_hook: Option<Box<dyn Fn(&mut Self) -> ()>>, change_hook: Option<Box<dyn Fn(&mut Self) -> ()>>) -> UiPages
+    {
         thread::sleep(Duration::from_millis(USER_INPUT_DELAY));
         let lcd_binding = self.get_lcd();
         let gpio_binding = self.get_gpio_controller();
@@ -53,7 +53,9 @@ pub (crate) trait MenuPage {
                 map
             })
         });
-       
+        if let Some(func) = pree_loop_hook {
+            func(self);
+        }
         let mut last_selection: i16 = -2;
         loop {
             let actions: [(_, Box<dyn Fn(&mut Self, u8) -> Option<UiPages>>); 4] = [
@@ -63,13 +65,18 @@ pub (crate) trait MenuPage {
                 (gpio_lock.enter.read(), Box::new(|s, o| MenuPage::enter_handler(s, o))),
             ];
             
-
+            if let Some(ref func) = loop_hook {
+                func(self);
+            }
             for (level, handler) in actions.iter() {
                 if *level == Level::Low {
                     if let Some(page) = handler(self, option.len() as u8) {
                         self.execute_update();
                         return page;
-                    }    
+                    }
+                    if let Some(ref func) = change_hook{
+                        func(self);
+                    }
                 }
             }
             if self.get_current_selection() as i16 != last_selection {
@@ -102,6 +109,10 @@ pub (crate) trait MenuPage {
             
         }
     }
+
+    fn watch_loop(&mut self, text: &str, option: Vec<(u8, u8)>) -> UiPages {
+        self.main_handler(text, option, None, None, None)
+    }
     fn get_gpio_controller(&mut self) -> Arc<Mutex<GpioUi>>;
     fn get_lcd(&mut self) -> Arc<Mutex<LCDdriver>>;
     fn get_current_selection(&self) -> usize;
@@ -124,4 +135,16 @@ pub (crate) trait MenuPage {
         None
     }
     fn enter_handler(&mut self, options_len: u8) -> Option<UiPages>;
+}
+
+
+pub (crate) trait ReactivePage: MenuPage + 'static {
+    fn loop_hook(&mut self) -> (){}
+    fn change_hook(&mut self) -> (){}
+    fn pree_loop_hook(&mut self) -> (){}
+
+    fn watch_loop(&mut self, text: &str, option: Vec<(u8, u8)>) -> UiPages {
+        self.main_handler(text, option, Some(Box::new(Self::change_hook)), Some(Box::new(Self::loop_hook)), Some(Box::new(Self::pree_loop_hook)))
+    }
+    
 }

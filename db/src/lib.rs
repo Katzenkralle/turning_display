@@ -55,7 +55,7 @@ impl DbConn {
             diesel::insert_into(Led)
                 .values(models::Led{
                     id: i,
-                    color: "#ff0000".to_string(),
+                    color: "ff0000".to_string(),
                     brightness: 10,
                     mode: "solid".to_string(),
                 })

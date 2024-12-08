@@ -4,7 +4,7 @@ use db::schema::Led::{brightness, color};
 use crate::{LCDdriver, GpioUi};
 use crate::HashMap;
 use crate::GlobalIoHandlers;
-use crate::ui_pages::{MenuPage, UiPages};
+use crate::ui_pages::{ReactivePage, MenuPage, UiPages};
 use crate::{LCDCommand, LCDArg, LCDProgramm};
 
 
@@ -163,6 +163,33 @@ impl MenuPage for LedCtrlPage {
         });
         // |<^ xxxxxxxxxx v>|
         None
+    }
+}
+
+impl ReactivePage for LedCtrlPage {
+    fn loop_hook(&mut self) -> () {
+        let mut lcd_lock = self.global_io.lcd.lock().unwrap();
+        let _ = lcd_lock.exec(LCDCommand{
+            cmd: LCDProgramm::Move,
+            args: Some({
+                let mut map = HashMap::new();
+                map.insert("y".to_string(), LCDArg::Int(1));
+                map.insert("x".to_string(), LCDArg::Int(4));
+                map
+            })
+        });
+        let _ = lcd_lock.exec(LCDCommand{
+            cmd: LCDProgramm::Write,
+            args: Some({
+                let mut map = HashMap::new();
+                map.insert("text".to_string(), LCDArg::String(format!("{}",
+                    "Her"
+                )
+                    ));
+                map
+            })
+        });
+        // |<^ xxxxxxxxxx v>|
     }
     
 }
