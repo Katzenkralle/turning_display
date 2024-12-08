@@ -1,13 +1,17 @@
 
 use db::DbConn;
 use lcd_driver::{LCDdriver, LCDCommand, LCDProgramm, LCDArg};
-use std::{path::Path, ptr::null, str, thread::{self, JoinHandle}};
+use std::{path::Path, str, thread::{self, JoinHandle}};
 use crossbeam::channel::unbounded;
 use std::collections::HashMap;
 use rppal::gpio::{Gpio, InputPin, Level, OutputPin};
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Duration;
+
+
+mod ui_pages;
+use ui_pages::{man_ctrl::ManualControllPage, menu::MainMenu, settings::SettingsMenu, UiPages, MenuPage};
 
 const USER_INPUT_DELAY: u64 = 200;
 
@@ -68,6 +72,8 @@ fn walk_engine(engine: &mut Arc<Mutex<GpioEngine>>, go_right: bool, use_pwm: boo
     }
     delta_pos
 }
+
+
 struct GpioUi {
     home: InputPin,
     left: InputPin,
@@ -91,270 +97,6 @@ struct GlobalIoHandlers {
     broadcast_receiver: crossbeam::channel::Receiver<String>,
 }
 
-trait MenuPage {
-    fn watch_loop(&mut self, text: &str, option: Vec<(u8, u8)>) -> MenuPages {
-        thread::sleep(Duration::from_millis(USER_INPUT_DELAY));
-        let lcd_binding = self.get_lcd();
-        let gpio_binding = self.get_gpio_controller();
-        let mut lcd_lock = lcd_binding.lock().unwrap();
-        let gpio_lock = gpio_binding.lock().unwrap();
-
-        let _ = lcd_lock.exec(LCDCommand{
-            cmd: LCDProgramm::Clear,
-            args: None
-        });
-
-        let _ = lcd_lock.exec(LCDCommand{
-            cmd: LCDProgramm::Home,
-            args: None
-        });
-
-        let _ = lcd_lock.exec(LCDCommand{
-            cmd: LCDProgramm::Write,
-            args: Some({
-                let mut map = HashMap::new();
-                map.insert("text".to_string(), LCDArg::String(text.to_string()));
-                map
-            })
-        });
-       
-        //let _ = lcd_lock.exec(LCDCommand{
-        //    cmd: LCDProgramm::Move,
-        //    args: Some({
-        //        let mut map = HashMap::new();
-        //        map.insert("y".to_string(), LCDArg::Int(1));
-        //        map.insert("x".to_string(), LCDArg::Int(option[self.get_current_selection()].0 as i128));
-        //        map
-        //    })
-        //});
-        //let _ = lcd_lock.exec(LCDCommand{
-        //    cmd: LCDProgramm::Write,
-        //    args: Some({
-        //        let mut map = HashMap::new();
-        //        map.insert("text".to_string(), LCDArg::String("_".repeat(
-        //            (option[self.get_current_selection()].1 - option[self.get_current_selection()].0) as usize)
-        //            ));
-        //        map
-        //    })
-        //});
-        let mut last_selection: i16 = -2;
-        loop {
-            let actions: [(_, Box<dyn Fn(&mut Self, u8) -> Option<MenuPages>>); 4] = [
-                (gpio_lock.home.read(), Box::new(|s, o| MenuPage::home_handler(s, o))),
-                (gpio_lock.left.read(), Box::new(|s, o| MenuPage::left_handler(s, o))),
-                (gpio_lock.right.read(), Box::new(|s, o| MenuPage::right_handler(s, o))),
-                (gpio_lock.enter.read(), Box::new(|s, o| MenuPage::enter_handler(s, o))),
-            ];
-            
-
-            for (i, (level, handler)) in actions.iter().enumerate() {
-                if *level == Level::Low {
-                    if let Some(page) = handler(self, option.len() as u8) {
-                        self.execute_update();
-                        return page;
-                    }    
-                }
-            }
-            if self.get_current_selection() as i16 != last_selection {
-                let c_selection = self.get_current_selection();
-                let _ = lcd_lock.exec(LCDCommand{
-                    cmd: LCDProgramm::Move,
-                    args: Some({
-                        let mut map = HashMap::new();
-                        map.insert("y".to_string(), LCDArg::Int(1));
-                        map.insert("x".to_string(), LCDArg::Int(0));
-                        map
-                    })
-                });
-                let _ = lcd_lock.exec(LCDCommand{
-                    cmd: LCDProgramm::Write,
-                    args: Some({
-                        let mut map = HashMap::new();
-                        map.insert("text".to_string(), LCDArg::String(format!("{}{}{}",
-                        " ".repeat(option[c_selection].0 as usize),
-                        "_".repeat((option[c_selection].1 - option[c_selection].0) as usize),
-                        " ".repeat((16 -  option[c_selection].1) as usize)
-                        )
-                            ));
-                        map
-                    })
-                });
-                last_selection = self.get_current_selection() as i16;
-                thread::sleep(Duration::from_millis(USER_INPUT_DELAY));
-            }
-            
-        }
-    }
-    fn get_gpio_controller(&mut self) -> Arc<Mutex<GpioUi>>;
-    fn get_lcd(&mut self) -> Arc<Mutex<LCDdriver>>;
-    fn get_current_selection(&self) -> usize;
-    fn execute_update(&mut self) -> ();
-
-    fn home_handler(&mut self, options_len: u8) -> Option<MenuPages>;
-    fn left_handler(&mut self, options_len: u8) -> Option<MenuPages>;
-    fn right_handler(&mut self, options_len: u8) -> Option<MenuPages>;
-    fn enter_handler(&mut self, options_len: u8) -> Option<MenuPages>;
-}
-
-#[derive(Debug, Clone, Copy)]
-enum MenuPages {
-    MainMenu,
-    SettingsMenu,
-    ManualControll,
-}
-
-
-struct MainMenu {
-    global_io: GlobalIoHandlers,
-    current_selection: usize,
-}
-
-impl MenuPage for MainMenu {
-    
-    fn get_lcd(&mut self) -> Arc<Mutex<LCDdriver>> {
-        self.global_io.lcd.clone()
-    }
-
-    fn get_gpio_controller(&mut self) -> Arc<Mutex<GpioUi>> {
-        self.global_io.gpio_ui.clone()
-    }
-
-    fn execute_update(&mut self) -> () {
-        
-    }
-
-    fn get_current_selection(&self) -> usize {
-        self.current_selection
-    }
-
-    fn enter_handler(&mut self, _: u8) -> Option<MenuPages> {
-        match self.current_selection {
-            0 => Some(MenuPages::ManualControll),
-            1 => Some(MenuPages::SettingsMenu),
-            _ => None,
-        }
-    }
-    fn home_handler(&mut self, _: u8) -> Option<MenuPages> {
-        None
-    }
-
-    fn left_handler(&mut self, _: u8) -> Option<MenuPages> {
-        if self.current_selection > 0 {
-            self.current_selection -= 1;
-        }
-        None
-    }
-    fn right_handler(&mut self, options_len: u8) -> Option<MenuPages> {
-        if self.current_selection < options_len as usize - 1 {
-            self.current_selection += 1;
-        }
-        None
-    }
-}
-
-
-struct SettingsMenu {
-    global_io: GlobalIoHandlers,
-    current_selection: usize,
-}
-
-impl MenuPage for SettingsMenu {
-    
-    fn get_lcd(&mut self) -> Arc<Mutex<LCDdriver>> {
-        self.global_io.lcd.clone()
-    }
-
-    fn get_gpio_controller(&mut self) -> Arc<Mutex<GpioUi>> {
-        self.global_io.gpio_ui.clone()
-    }
-
-    fn execute_update(&mut self) -> () {
-        
-    }
-    fn get_current_selection(&self) -> usize {
-        self.current_selection
-    }
-
-    fn enter_handler(&mut self, _: u8) -> Option<MenuPages> {
-        None
-    }
-    fn home_handler(&mut self, _: u8) -> Option<MenuPages> {
-        Some(MenuPages::MainMenu)
-    }
-
-    fn left_handler(&mut self, _: u8) -> Option<MenuPages> {
-        if self.current_selection > 0 {
-            self.current_selection -= 1;
-        }
-        None
-    }
-    fn right_handler(&mut self, options_len: u8) -> Option<MenuPages> {
-        if self.current_selection < options_len as usize - 1 {
-            self.current_selection += 1;
-        }
-        None
-    }
-}
-
-
-struct ManualControllPage {
-    global_io: GlobalIoHandlers,
-    current_selection: usize,
-
-    position: u8,
-}
-impl MenuPage for ManualControllPage {
-    
-    fn get_lcd(&mut self) -> Arc<Mutex<LCDdriver>> {
-        self.global_io.lcd.clone()
-    }
-
-    fn get_gpio_controller(&mut self) -> Arc<Mutex<GpioUi>> {
-        self.global_io.gpio_ui.clone()
-    }
-
-    fn get_current_selection(&self) -> usize {
-        self.current_selection
-    }
-
-    fn execute_update(&mut self) -> () {
-        let mut db_lock = self.global_io.db.lock().unwrap();
-        db_lock.update_engine_state(self.position.into()).unwrap()
-    }
-
-    fn enter_handler(&mut self, _: u8) -> Option<MenuPages> {
-        match self.current_selection {
-            0 => {
-                walk_engine(&mut self.global_io.gpio_engine, true, false);
-            },
-            2 => {
-                walk_engine(&mut self.global_io.gpio_engine, false, false);
-            },
-            _ => (
-                // To implement save
-            ),
-            
-        }
-        None
-    }
-    fn home_handler(&mut self, _: u8) -> Option<MenuPages> {
-        Some(MenuPages::MainMenu)
-    }
-
-    fn left_handler(&mut self, _: u8) -> Option<MenuPages> {
-        if self.current_selection > 0 {
-            self.current_selection -= 1;
-        }
-        None
-    }
-    fn right_handler(&mut self, options_len: u8) -> Option<MenuPages> {
-        if self.current_selection < options_len as usize - 1 {
-            self.current_selection += 1;
-        }
-        None
-    }
-    
-}
 
 fn main_prosessing_loop() -> () {
         let (tx, rx) = unbounded::<String>();   
@@ -371,8 +113,8 @@ fn main_prosessing_loop() -> () {
             ena: Gpio::new().unwrap().get(16).unwrap().into_output(),
         };
 
-        let mut menu_page_thread: Option<JoinHandle<MenuPages>> = None;
-        let mut requested_menu = MenuPages::MainMenu;
+        let mut menu_page_thread: Option<JoinHandle<UiPages>> = None;
+        let mut requested_menu = UiPages::Menu1;
         
         let global_io = GlobalIoHandlers {  
             lcd: Arc::new(Mutex::new(LCDdriver::new(Path::new("lcd_driver/lcd.sock"), true).unwrap())),
@@ -397,20 +139,28 @@ fn main_prosessing_loop() -> () {
             println!("Spawning new {:?}", &requested_menu);
             let _global_io = global_io.clone();
             menu_page_thread = Some(match requested_menu {
-                MenuPages::MainMenu => 
+                UiPages::Menu1 => 
                     thread::spawn(move || {
                         MainMenu {
                         global_io: _global_io,
                         current_selection: 0,
-                    }.watch_loop("<Ctrl.     Set.>", vec![(0, 6), (11, 16)])}),         
-                MenuPages::SettingsMenu => 
+                        return_to: vec![UiPages::Menu2, UiPages::ManualControll, UiPages::SettingsMenu],
+                    }.watch_loop("< mPos.   Led. >", vec![(0,1), (2, 8), (9, 14)])}),  
+                UiPages::Menu2 =>
+                    thread::spawn(move || {
+                        MainMenu {
+                            global_io: _global_io,
+                            current_selection: 0,
+                            return_to: vec![UiPages::ManualControll, UiPages::SettingsMenu, UiPages::Menu1],
+                        }.watch_loop("  Sav.   Set.  >", vec![(2, 8), (9, 14), (15, 16)])}),       
+                UiPages::SettingsMenu => 
                     thread::spawn(move || {
                         SettingsMenu {
                             global_io: _global_io,
                             current_selection: 0,
                         }.watch_loop("<  Automatic ON?", vec![(0, 1), (13, 16)])
                     }),
-                MenuPages::ManualControll => 
+                UiPages::ManualControll => 
                     thread::spawn(move || {
                         let engine_state = _global_io.db.lock().unwrap().get_engine_state().unwrap();
                         ManualControllPage {
