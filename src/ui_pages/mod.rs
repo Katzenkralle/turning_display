@@ -71,7 +71,7 @@ pub (crate) trait MenuPage {
             for (level, handler) in actions.iter() {
                 if *level == Level::Low {
                     if let Some(page) = handler(self, option.len() as u8) {
-                        self.execute_update();
+                        self.teardown();
                         return page;
                     }
                     change = true;
@@ -130,7 +130,7 @@ pub (crate) trait MenuPage {
     fn get_lcd(&mut self) -> Arc<Mutex<LCDdriver>>;
     fn get_current_selection(&self) -> usize;
     fn set_current_selection(&mut self, selection: usize) -> ();
-    fn execute_update(&mut self) -> ();
+    fn teardown(&mut self) -> ();
 
     fn home_handler(&mut self, options_len: u8) -> Option<UiPages> {
         Some(UiPages::Menu1)

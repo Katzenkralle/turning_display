@@ -99,10 +99,12 @@ impl MenuPage for LedCtrlPage {
         self.current_selection = selection;
     }
 
-    fn execute_update(&mut self) -> () {
+    fn teardown(&mut self) -> () {
         let db_lock = self.global_io.db.lock().unwrap();
-        let led = db_lock.get_leds(None).unwrap().iter().map(|x| x.id).collect();
-        db_lock.update_led(led, Some(&self.color), Some(self.brightness), Some(&self.mode)).unwrap();
+        db_lock.update_led(self.global_io.active_preset,
+            Some(&self.color),
+            Some(self.brightness),
+            Some(&self.mode)).unwrap();
     }
 
     fn enter_handler(&mut self, _: u8) -> Option<UiPages> {

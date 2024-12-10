@@ -1,10 +1,19 @@
 // @generated automatically by Diesel CLI.
 
 diesel::table! {
-    EngineState (id) {
-        id -> Text,
+    ApplicationState (id) {
+        id -> Integer,
+        active_preset -> Integer,
+        current_engine_state -> Integer,
+    }
+}
+
+diesel::table! {
+    Engine (id) {
+        id -> Integer,
         position -> Integer,
-        steps_per_revolution -> Integer,
+        is_target -> Bool,
+        associated_preset -> Nullable<Integer>,
     }
 }
 
@@ -14,10 +23,12 @@ diesel::table! {
         color -> Text,
         brightness -> Integer,
         mode -> Text,
+        associated_preset -> Nullable<Integer>,
     }
 }
 
 diesel::allow_tables_to_appear_in_same_query!(
-    EngineState,
+    ApplicationState,
+    Engine,
     Led,
 );

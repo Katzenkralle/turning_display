@@ -1,7 +1,0 @@
--- Your SQL goes here
-CREATE TABLE Led (
-  id INTEGER PRIMARY KEY NOT NULL,
-  color TEXT NOT NULL DEFAULT "000000",
-  brightness INTEGER NOT NULL DEFAULT 10,
-  mode TEXT NOT NULL DEFAULT "solid"
-)

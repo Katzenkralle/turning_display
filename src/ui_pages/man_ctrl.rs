@@ -27,18 +27,24 @@ impl MenuPage for ManualControllPage {
         self.current_selection = selection;
     }
 
-    fn execute_update(&mut self) -> () {
-        let mut db_lock = self.global_io.db.lock().unwrap();
-        db_lock.update_engine_state(self.position.into()).unwrap()
+    fn teardown(&mut self) -> () { 
     }
 
     fn enter_handler(&mut self, _: u8) -> Option<UiPages> {
         match self.current_selection {
             0 => {
-                walk_engine(&mut self.global_io.gpio_engine, true, false);
+                walk_engine(&mut self.global_io, true, false);
+            },
+            1 => {
+                let db_lock = self.global_io.db.lock().unwrap();
+                db_lock.update_engin(self.global_io.active_preset,
+                    Some(db_lock.get_application_state().unwrap().current_engine_state),
+                    Some(true))
+                .unwrap();
+                return Some(UiPages::Menu1);
             },
             2 => {
-                walk_engine(&mut self.global_io.gpio_engine, false, false);
+                walk_engine(&mut self.global_io, false, false);
             },
             _ => (
                 // To implement save

@@ -19,7 +19,7 @@ impl MenuPage for SettingsMenu {
         self.global_io.gpio_ui.clone()
     }
 
-    fn execute_update(&mut self) -> () {  
+    fn teardown(&mut self) -> () {  
     }
 
     fn set_current_selection(&mut self, selection: usize) -> () {

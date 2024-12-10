@@ -1,5 +1,5 @@
 
-use db::DbConn;
+use db::{models::Led, DbConn};
 use lcd_driver::{LCDdriver, LCDCommand, LCDProgramm, LCDArg};
 use std::{path::Path, str, thread::{self, JoinHandle}};
 use crossbeam::channel::unbounded;
@@ -30,9 +30,10 @@ const USER_INPUT_DELAY: u64 = 200;
 // > LCD: 0x27
 // r
 
-fn walk_engine(engine: &mut Arc<Mutex<GpioEngine>>, go_right: bool, use_pwm: bool) -> i16 {
-    let mut lock = engine.lock().unwrap();
+fn walk_engine(global_ui: &mut GlobalIoHandlers, go_right: bool, use_pwm: bool) -> i32 {
+    let mut lock = global_ui.gpio_engine.lock().unwrap();
     let mut delta_pos = 1;
+    let mut db_lock = global_ui.db.lock().unwrap();
     if go_right {
         lock.dir.write(Level::Low);
         delta_pos *= -1;
@@ -48,6 +49,8 @@ fn walk_engine(engine: &mut Arc<Mutex<GpioEngine>>, go_right: bool, use_pwm: boo
         lock.step.write(Level::Low);
         thread::sleep(std::time::Duration::from_millis(1));
     }
+    let c_pos = db_lock.get_application_state().unwrap().current_engine_state;
+    db_lock.update_application_state(Some(c_pos+delta_pos), None).unwrap();
     delta_pos
 }
 
@@ -72,13 +75,11 @@ struct GlobalIoHandlers {
     gpio_engine: Arc<Mutex<GpioEngine>>,
 
     db: Arc<Mutex<DbConn>>,
-    broadcast_receiver: crossbeam::channel::Receiver<String>,
+    active_preset: i32,
 }
 
-
-fn main_prosessing_loop() -> () {
-        let (tx, rx) = unbounded::<String>();   
-
+impl GlobalIoHandlers {
+    fn new() -> Self {
         let goip_ui = GpioUi {
             home: Gpio::new().unwrap().get(23).unwrap().into_input_pullup(),
             left: Gpio::new().unwrap().get(25).unwrap().into_input_pullup(),
@@ -90,18 +91,28 @@ fn main_prosessing_loop() -> () {
             step: Gpio::new().unwrap().get(21).unwrap().into_output(),
             ena: Gpio::new().unwrap().get(16).unwrap().into_output(),
         };
-
-        let mut menu_page_thread: Option<JoinHandle<UiPages>> = None;
-        let mut requested_menu = UiPages::Menu1;
         
-        let global_io = GlobalIoHandlers {  
+       let db = DbConn::establish_connection();
+       let active_preset = db.get_application_state().unwrap().active_preset;
+        
+        GlobalIoHandlers {  
             lcd: Arc::new(Mutex::new(LCDdriver::new(Path::new("lcd_driver/lcd.sock"), true).unwrap())),
             gpio_ui: Arc::new(Mutex::new(goip_ui)),
             gpio_engine: Arc::new(Mutex::new(gpio_engine)),
 
-            db: Arc::new(Mutex::new(DbConn::establish_connection())),
-            broadcast_receiver: rx,
-        };
+            db: Arc::new(Mutex::new(db)),
+            active_preset: active_preset,
+        }
+    }
+}
+
+fn main_prosessing_loop() -> () {
+        //let (tx, rx) = unbounded::<String>();   
+
+        let mut menu_page_thread: Option<JoinHandle<UiPages>> = None;
+        let mut requested_menu = UiPages::Menu1;
+        
+        let global_io = GlobalIoHandlers::new();
         println!("Entering main loop");
         loop {
             // Handle completed threads
@@ -140,49 +151,94 @@ fn main_prosessing_loop() -> () {
                     }),
                 UiPages::ManualControll => 
                     thread::spawn(move || {
-                        let engine_state = _global_io.db.lock().unwrap().get_engine_state().unwrap();
+                        let app_state = _global_io.db.lock().unwrap().get_application_state().unwrap();
                         ManualControllPage {
                             global_io: _global_io.clone(),
                             current_selection: 0,
-                            position: engine_state.position as u8,
+                            position: app_state.current_engine_state as u8,
                         }.watch_loop("<UP  SAVE  DOWN>", vec![(0, 3), (5, 9), (11, 16)])
                     }),
                 UiPages::LedColor =>
                     thread::spawn(move || {
-                        let led_state = _global_io.db.lock().unwrap().get_leds(None).unwrap();
+                        let associates = _global_io.active_preset;
+                        let led_state: Led = _global_io.db
+                            .lock()
+                            .expect("DB lock could not be aquired")
+                            .get_associated_led(associates)
+                            .unwrap_or(vec![])
+                            .get(0)
+                            .cloned()
+                            .or_else(|| Some(Led {
+                                id: 0,
+                                color: "ff0000".to_string(),
+                                brightness: 100,
+                                mode: "solid".to_string(),
+                                associated_preset: Some(associates),
+                            }))
+                            .unwrap();
                         LedCtrlPage {
                             global_io: _global_io,
                             current_selection: 0,
                             return_to: vec![(0, UiPages::LedBrightness), (3, UiPages::LedMode)],
-                            color: led_state[0].color.clone(),
-                            brightness: led_state[0].brightness as u8,
-                            mode: led_state[0].mode.clone(),
+                            color: led_state.color.clone(),
+                            brightness: led_state.brightness as u8,
+                            mode: led_state.mode.clone(),
                             setting: UiPages::LedColor
                         }.reactive_watch("<^   Color    v>", vec![(0, 1), (1, 2), (14, 15), (15, 16)])
                     }),
                 UiPages::LedBrightness =>
                     thread::spawn(move || {
-                        let led_state = _global_io.db.lock().unwrap().get_leds(None).unwrap();
+                        let associates = _global_io.active_preset;
+                        let led_state = _global_io.db
+                            .lock()
+                            .expect("DB lock could not be aquired")
+                            .get_associated_led(associates)
+                            .unwrap_or(vec![])
+                            .get(0)
+                            .cloned()
+                            .or_else(|| Some(Led {
+                                id: 0,
+                                color: "ff0000".to_string(),
+                                brightness: 100,
+                                mode: "solid".to_string(),
+                                associated_preset: Some(associates),
+                            }))
+                            .unwrap();
                         LedCtrlPage {
                             global_io: _global_io,
                             current_selection: 0,
                             return_to: vec![(0, UiPages::LedMode), (3, UiPages::LedColor)],
-                            color: led_state[0].color.clone(),
-                            brightness: led_state[0].brightness as u8,
-                            mode: led_state[0].mode.clone(),
+                            color: led_state.color.clone(),
+                            brightness: led_state.brightness as u8,
+                            mode: led_state.mode.clone(),
                             setting: UiPages::LedBrightness,
                         }.reactive_watch("<^ Brightness v>", vec![(0, 1), (1, 2), (14, 15), (15, 16)])
                     }),
                 UiPages::LedMode =>
                     thread::spawn(move || {
-                        let led_state = _global_io.db.lock().unwrap().get_leds(None).unwrap();
+                        let associates = _global_io.active_preset;
+                        let led_state = _global_io.db
+                            .lock()
+                            .expect("DB lock could not be aquired")
+                            .get_associated_led(associates)
+                            .unwrap_or(vec![])
+                            .get(0)
+                            .cloned()
+                            .or_else(|| Some(Led {
+                                id: 0,
+                                color: "ff0000".to_string(),
+                                brightness: 100,
+                                mode: "solid".to_string(),
+                                associated_preset: Some(associates),
+                            }))
+                            .unwrap();
                         LedCtrlPage {
                             global_io: _global_io,
                             current_selection: 0,
                             return_to: vec![(0, UiPages::LedColor), (3, UiPages::LedBrightness)],
-                            color: led_state[0].color.clone(),
-                            brightness: led_state[0].brightness as u8,
-                            mode: led_state[0].mode.clone(),
+                            color: led_state.color.clone(),
+                            brightness: led_state.brightness as u8,
+                            mode: led_state.mode.clone(),
                             setting: UiPages::LedMode,
                         }.reactive_watch("<^    Mode    v>", vec![(0, 1), (1, 2), (14, 15), (15, 16)])
                     }),
