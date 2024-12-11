@@ -15,8 +15,19 @@ impl DbConn {
     pub fn establish_connection() -> Self {
         dotenv().ok();
         let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
-        let connection = SqliteConnection::establish(&database_url)
+        let mut connection = SqliteConnection::establish(&database_url)
             .expect(&format!("Error connecting to {}", database_url));
+
+        use self::schema::ApplicationState::dsl::*;
+        if ApplicationState.filter(id.eq(0)).load::<models::ApplicationState>(&mut connection).unwrap().len() == 0 {
+            diesel::insert_into(ApplicationState)
+                .values(models::ApplicationState{
+                    id: 0,
+                    current_engine_state: 0,
+                    active_preset: 0,
+                })
+                .execute(&mut connection).unwrap();
+        }
         let conn = Self(Arc::new(Mutex::new(connection)));
         conn
     }

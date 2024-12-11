@@ -1,6 +1,7 @@
 use std::sync::{Arc, Mutex};
 use crate::{LCDdriver, GpioUi};
 use crate::GlobalIoHandlers;
+use crate::Level;
 use crate::ui_pages::{MenuPage, UiPages};
 use crate::walk_engine;
 
@@ -31,9 +32,21 @@ impl MenuPage for ManualControllPage {
     }
 
     fn enter_handler(&mut self, _: u8) -> Option<UiPages> {
+        let mut repeater= |go_right: bool| {
+            let _global_io = self.global_io.clone();
+            let input_lock = _global_io.gpio_ui.lock().unwrap();
+            _global_io.gpio_engine.lock().unwrap().sleep.set_high();
+            loop {
+                walk_engine(&mut self.global_io.gpio_engine, go_right, None);
+                if input_lock.enter.read() != Level::Low {
+                    break
+                }
+            }
+            _global_io.gpio_engine.lock().unwrap().sleep.set_low();
+        };
         match self.current_selection {
             0 => {
-                walk_engine(&mut self.global_io, true, false);
+                repeater(true);
             },
             1 => {
                 let db_lock = self.global_io.db.lock().unwrap();
@@ -44,12 +57,11 @@ impl MenuPage for ManualControllPage {
                 return Some(UiPages::Menu1);
             },
             2 => {
-                walk_engine(&mut self.global_io, false, false);
+                repeater(false);
             },
             _ => (
                 // To implement save
             ),
-            
         }
         None
     }

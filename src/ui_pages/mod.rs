@@ -33,7 +33,7 @@ pub (crate) trait MenuPage {
         let lcd_binding = self.get_lcd();
         let gpio_binding = self.get_gpio_controller();
         let mut lcd_lock = Some(lcd_binding.lock().unwrap());
-        let gpio_lock = gpio_binding.lock().unwrap();
+        let mut gpio_lock = Some(gpio_binding.lock().unwrap());
 
         let _ = lcd_lock.as_mut().unwrap().exec(LCDCommand{
             cmd: LCDProgramm::Clear,
@@ -55,12 +55,13 @@ pub (crate) trait MenuPage {
         });
         let mut last_selection: i16 = -2;
         loop {
+            let loop_start_time = std::time::Instant::now();
             let mut change = false;
             let actions: [(_, Box<dyn Fn(&mut Self, u8) -> Option<UiPages>>); 4] = [
-                (gpio_lock.home.read(), Box::new(|s, o| MenuPage::home_handler(s, o))),
-                (gpio_lock.left.read(), Box::new(|s, o| MenuPage::left_handler(s, o))),
-                (gpio_lock.right.read(), Box::new(|s, o| MenuPage::right_handler(s, o))),
-                (gpio_lock.enter.read(), Box::new(|s, o| MenuPage::enter_handler(s, o))),
+                (gpio_lock.as_mut().unwrap().home.read(), Box::new(|s, o| MenuPage::home_handler(s, o))),
+                (gpio_lock.as_mut().unwrap().left.read(), Box::new(|s, o| MenuPage::left_handler(s, o))),
+                (gpio_lock.as_mut().unwrap().right.read(), Box::new(|s, o| MenuPage::right_handler(s, o))),
+                (gpio_lock.as_mut().unwrap().enter.read(), Box::new(|s, o| MenuPage::enter_handler(s, o))),
             ];
             
             if let Some(ref func) = loop_hook {
@@ -70,10 +71,12 @@ pub (crate) trait MenuPage {
             }
             for (level, handler) in actions.iter() {
                 if *level == Level::Low {
+                    gpio_lock = None;
                     if let Some(page) = handler(self, option.len() as u8) {
                         self.teardown();
                         return page;
                     }
+                    gpio_lock = Some(gpio_binding.lock().unwrap());
                     change = true;
                 }
             }
@@ -116,13 +119,15 @@ pub (crate) trait MenuPage {
                     func(self);
                     lcd_lock = Some(lcd_binding.lock().unwrap());
                 }
-                thread::sleep(Duration::from_millis(USER_INPUT_DELAY));
+                if loop_start_time.elapsed() < Duration::from_millis(USER_INPUT_DELAY) {
+                    thread::sleep(Duration::from_millis(USER_INPUT_DELAY) - loop_start_time.elapsed());
+                }
+                //thread::sleep(Duration::from_millis(USER_INPUT_DELAY));
 
             }
             
         }
     }
-
     fn watch_loop(&mut self, text: &str, option: Vec<(u8, u8)>) -> UiPages {
         self.main_handler(text, option, None, None, None)
     }

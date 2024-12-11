@@ -8,68 +8,6 @@ use crate::ui_pages::{ReactivePage, MenuPage, UiPages};
 use crate::{LCDCommand, LCDArg, LCDProgramm};
 use colors_transform::{Color, Hsl, Rgb};
 
-
-fn rgb_to_hsl(hex: &String) -> (f32, f32, f32) {
-    
-    let r = u8::from_str_radix(&hex[0..1], 16).unwrap() as f32 / 255.0;
-    let g = u8::from_str_radix(&hex[2..3], 16).unwrap() as f32 / 255.0;
-    let b = u8::from_str_radix(&hex[4..5], 16).unwrap() as f32 / 255.0;
-
-    let max = r.max(g).max(b);
-    let min = r.min(g).min(b);
-    let delta = max - min;
-
-    // Calculate Lightness
-    let l = (max + min) / 2.0;
-
-    // Calculate Saturation
-    let s = if delta == 0.0 {
-        0.0
-    } else {
-        delta / (1.0 - (max + min - 1.0).abs())
-    };
-
-    // Calculate Hue
-    let h = if delta == 0.0 {
-        0.0
-    } else if max == r {
-        (g - b) / delta + if g < b { 6.0 } else { 0.0 }
-    } else if max == g {
-        (b - r) / delta + 2.0
-    } else {
-        (r - g) / delta + 4.0
-    };
-    let h = (h * 60.0).rem_euclid(360.0); // Ensure hue is in the range [0, 360)
-
-    (h, s, l)
-}
-
-fn hsl_to_rgb_string(h: f32, s: f32, l: f32) -> String {
-    let c = (1.0 - (2.0 * l - 1.0).abs()) * s;
-    let x = c * (1.0 - ((h / 60.0) % 2.0 - 1.0).abs());
-    let m = l - c / 2.0;
-
-    let (r_prime, g_prime, b_prime) = if h >= 0.0 && h < 60.0 {
-        (c, x, 0.0)
-    } else if h >= 60.0 && h < 120.0 {
-        (x, c, 0.0)
-    } else if h >= 120.0 && h < 180.0 {
-        (0.0, c, x)
-    } else if h >= 180.0 && h < 240.0 {
-        (0.0, x, c)
-    } else if h >= 240.0 && h < 300.0 {
-        (x, 0.0, c)
-    } else {
-        (c, 0.0, x)
-    };
-
-    let r = ((r_prime + m) * 255.0).round() as u8;
-    let g = ((g_prime + m) * 255.0).round() as u8;
-    let b = ((b_prime + m) * 255.0).round() as u8;
-
-    format!("{r:02x}{g:02x}{b:02x}")
-}
-
 pub (crate) struct LedCtrlPage {
     pub (crate) global_io: GlobalIoHandlers,
     pub (crate) current_selection: usize,

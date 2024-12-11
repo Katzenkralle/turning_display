@@ -30,27 +30,34 @@ const USER_INPUT_DELAY: u64 = 200;
 // > LCD: 0x27
 // r
 
-fn walk_engine(global_ui: &mut GlobalIoHandlers, go_right: bool, use_pwm: bool) -> i32 {
-    let mut lock = global_ui.gpio_engine.lock().unwrap();
-    let mut delta_pos = 1;
-    let mut db_lock = global_ui.db.lock().unwrap();
-    if go_right {
+fn walk_engine(gpio_engine: &mut Arc<Mutex<GpioEngine>>, go_right: bool, distance: Option<u64>) -> i32 {
+    let mut lock = gpio_engine.lock().unwrap();
+    const STEPS_PER_WALK: i32 = 500;
+    const DELAY: u64 = 200;
+    let mut delta_pos = 1 * STEPS_PER_WALK;   
+    if !go_right {
         lock.dir.write(Level::Low);
         delta_pos *= -1;
     } else {
         lock.dir.write(Level::High);
     }
-    if use_pwm {
-        
-        // to do
+    
+    if let Some(delta) = distance {
+        delta_pos = delta as i32;
+        for _ in 0..delta {
+            lock.step.write(Level::High);
+            thread::sleep(std::time::Duration::from_micros(DELAY));
+            lock.step.write(Level::Low);
+            thread::sleep(std::time::Duration::from_micros(DELAY));
+        }
     } else {
+    for _ in 0..STEPS_PER_WALK {
         lock.step.write(Level::High);
-        thread::sleep(std::time::Duration::from_millis(1));
+        thread::sleep(std::time::Duration::from_micros(DELAY));
         lock.step.write(Level::Low);
-        thread::sleep(std::time::Duration::from_millis(1));
+        thread::sleep(std::time::Duration::from_micros(DELAY));
+        }
     }
-    let c_pos = db_lock.get_application_state().unwrap().current_engine_state;
-    db_lock.update_application_state(Some(c_pos+delta_pos), None).unwrap();
     delta_pos
 }
 
@@ -65,7 +72,7 @@ struct GpioUi {
 struct GpioEngine {
     dir: OutputPin,
     step: OutputPin,
-    ena: OutputPin
+    sleep: OutputPin
 }
 
 #[derive( Clone)]
@@ -86,12 +93,14 @@ impl GlobalIoHandlers {
             right: Gpio::new().unwrap().get(22).unwrap().into_input_pullup(),
             enter: Gpio::new().unwrap().get(24).unwrap().into_input_pullup(),
         };
-        let gpio_engine = GpioEngine {
+        let mut gpio_engine = GpioEngine {
             dir: Gpio::new().unwrap().get(20).unwrap().into_output(),
             step: Gpio::new().unwrap().get(21).unwrap().into_output(),
-            ena: Gpio::new().unwrap().get(16).unwrap().into_output(),
+            sleep: Gpio::new().unwrap().get(26).unwrap().into_output(),
         };
         
+        gpio_engine.sleep.write(Level::Low);
+
        let db = DbConn::establish_connection();
        let active_preset = db.get_application_state().unwrap().active_preset;
         
