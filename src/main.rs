@@ -1,19 +1,22 @@
 
-use db::{models::Led, DbConn};
+use db::DbConn;
+use db::models::Led as LedDb;
 use lcd_driver::{LCDdriver, LCDCommand, LCDProgramm, LCDArg};
 use std::{path::Path, str, thread::{self, JoinHandle}};
-use crossbeam::channel::unbounded;
 use std::collections::HashMap;
 use rppal::gpio::{Gpio, InputPin, Level, OutputPin};
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Duration;
 
+use sk6812_rpi::strip::{Bus, Strip};
+use sk6812_rpi::led::Led as Led;
 
 mod ui_pages;
 use ui_pages::{man_ctrl::ManualControllPage, menu::MainMenu, settings::SettingsMenu, led_ctrl::LedCtrlPage, UiPages, MenuPage, ReactivePage};
 
 const USER_INPUT_DELAY: u64 = 200;
+const STEPS_PER_ROUND: i32 = 6000;
 // Pinout:
 // Home > 17
 // Left > 27
@@ -30,7 +33,28 @@ const USER_INPUT_DELAY: u64 = 200;
 // > LCD: 0x27
 // r
 
-fn walk_engine(gpio_engine: &mut Arc<Mutex<GpioEngine>>, go_right: bool, distance: Option<u64>) -> i32 {
+fn light_strip(strip: &mut Arc<Mutex<Strip>>,  mode: &str, color: Option<[u8; 3]>, _brightness: Option<u8>) -> () {
+    let mut lock = strip.lock().unwrap();
+    match mode {
+        "solid" => {
+            if let Some(_color) = color  {
+                let mut base_color = _color;
+                if let Some(_brightness) = _brightness {
+                    for i in 0..3 {
+                        base_color[i] = (base_color[i] as f32*(_brightness as f32 / 100.0)).round() as u8;
+                    }
+                }
+                lock.fill(Led::from_rgb_array(base_color));
+            }
+        },
+        _ => (),
+    }
+
+    let _ = lock.update();
+}
+
+
+fn walk_engine(gpio_engine: &mut Arc<Mutex<GpioEngine>>, go_right: bool, delta_distance: Option<u64>) -> i32 {
     let mut lock = gpio_engine.lock().unwrap();
     const STEPS_PER_WALK: i32 = 500;
     const DELAY: u64 = 200;
@@ -42,7 +66,7 @@ fn walk_engine(gpio_engine: &mut Arc<Mutex<GpioEngine>>, go_right: bool, distanc
         lock.dir.write(Level::High);
     }
     
-    if let Some(delta) = distance {
+    if let Some(delta) = delta_distance {
         delta_pos = delta as i32;
         for _ in 0..delta {
             lock.step.write(Level::High);
@@ -78,6 +102,7 @@ struct GpioEngine {
 #[derive( Clone)]
 struct GlobalIoHandlers {
     lcd: Arc<Mutex<LCDdriver>>,
+    rgb_strip: Arc<Mutex<Strip>>,
     gpio_ui: Arc<Mutex<GpioUi>>,
     gpio_engine: Arc<Mutex<GpioEngine>>,
 
@@ -100,7 +125,7 @@ impl GlobalIoHandlers {
         };
         
         gpio_engine.sleep.write(Level::Low);
-
+        let strip = Strip::new(Bus::Spi0, 69).unwrap();
        let db = DbConn::establish_connection();
        let active_preset = db.get_application_state().unwrap().active_preset;
         
@@ -108,6 +133,7 @@ impl GlobalIoHandlers {
             lcd: Arc::new(Mutex::new(LCDdriver::new(Path::new("lcd_driver/lcd.sock"), true).unwrap())),
             gpio_ui: Arc::new(Mutex::new(goip_ui)),
             gpio_engine: Arc::new(Mutex::new(gpio_engine)),
+            rgb_strip: Arc::new(Mutex::new(strip)),
 
             db: Arc::new(Mutex::new(db)),
             active_preset: active_preset,
@@ -121,6 +147,7 @@ fn main_prosessing_loop() -> () {
         let mut menu_page_thread: Option<JoinHandle<UiPages>> = None;
         let mut requested_menu = UiPages::Menu1;
         
+
         let global_io = GlobalIoHandlers::new();
         println!("Entering main loop");
         loop {
@@ -170,14 +197,14 @@ fn main_prosessing_loop() -> () {
                 UiPages::LedColor =>
                     thread::spawn(move || {
                         let associates = _global_io.active_preset;
-                        let led_state: Led = _global_io.db
+                        let led_state: LedDb = _global_io.db
                             .lock()
                             .expect("DB lock could not be aquired")
                             .get_associated_led(associates)
                             .unwrap_or(vec![])
                             .get(0)
                             .cloned()
-                            .or_else(|| Some(Led {
+                            .or_else(|| Some(LedDb {
                                 id: 0,
                                 color: "ff0000".to_string(),
                                 brightness: 100,
@@ -205,7 +232,7 @@ fn main_prosessing_loop() -> () {
                             .unwrap_or(vec![])
                             .get(0)
                             .cloned()
-                            .or_else(|| Some(Led {
+                            .or_else(|| Some(LedDb {
                                 id: 0,
                                 color: "ff0000".to_string(),
                                 brightness: 100,
@@ -233,7 +260,7 @@ fn main_prosessing_loop() -> () {
                             .unwrap_or(vec![])
                             .get(0)
                             .cloned()
-                            .or_else(|| Some(Led {
+                            .or_else(|| Some(LedDb {
                                 id: 0,
                                 color: "ff0000".to_string(),
                                 brightness: 100,

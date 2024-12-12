@@ -4,6 +4,7 @@ use crate::GlobalIoHandlers;
 use crate::Level;
 use crate::ui_pages::{MenuPage, UiPages};
 use crate::walk_engine;
+use crate::STEPS_PER_ROUND;
 
 pub (crate) struct ManualControllPage {
     pub (crate)  global_io: GlobalIoHandlers,
@@ -35,13 +36,24 @@ impl MenuPage for ManualControllPage {
         let mut repeater= |go_right: bool| {
             let _global_io = self.global_io.clone();
             let input_lock = _global_io.gpio_ui.lock().unwrap();
+            let mut acumulated_distance = 0;
             _global_io.gpio_engine.lock().unwrap().sleep.set_high();
             loop {
-                walk_engine(&mut self.global_io.gpio_engine, go_right, None);
+                acumulated_distance = acumulated_distance + walk_engine(&mut self.global_io.gpio_engine, go_right, None);
                 if input_lock.enter.read() != Level::Low {
                     break
                 }
             }
+            acumulated_distance = self.global_io.db.lock().unwrap().get_application_state().unwrap().current_engine_state + acumulated_distance;
+            if acumulated_distance > STEPS_PER_ROUND {
+                acumulated_distance = acumulated_distance - STEPS_PER_ROUND;
+            } else if acumulated_distance < 0 {
+                acumulated_distance = STEPS_PER_ROUND + acumulated_distance;
+            }
+            self.global_io.db.lock().unwrap().update_application_state(
+                Some(acumulated_distance),
+                None)
+                .unwrap();
             _global_io.gpio_engine.lock().unwrap().sleep.set_low();
         };
         match self.current_selection {

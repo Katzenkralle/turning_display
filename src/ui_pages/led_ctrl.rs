@@ -1,5 +1,4 @@
 use std::sync::{Arc, Mutex};
-use db::schema::Led::{brightness, color};
 
 use crate::{LCDdriver, GpioUi};
 use crate::HashMap;
@@ -7,6 +6,7 @@ use crate::GlobalIoHandlers;
 use crate::ui_pages::{ReactivePage, MenuPage, UiPages};
 use crate::{LCDCommand, LCDArg, LCDProgramm};
 use colors_transform::{Color, Hsl, Rgb};
+use crate::light_strip;
 
 pub (crate) struct LedCtrlPage {
     pub (crate) global_io: GlobalIoHandlers,
@@ -46,41 +46,40 @@ impl MenuPage for LedCtrlPage {
     }
 
     fn enter_handler(&mut self, _: u8) -> Option<UiPages> {
-        match self.current_selection {
-           1 => {
-            match self.setting {
-                UiPages::LedColor => {
-                
-                        let hsl_color = Rgb::from_hex_str(&self.color).unwrap().to_hsl();
-                        let hsl_color = Hsl::from((hsl_color.get_hue() + 10.0).min(359.0), hsl_color.get_saturation(), hsl_color.get_lightness());
-                        self.color = format!("{:02x}{:02x}{:02x}", hsl_color.get_red() as u8, hsl_color.get_green() as u8, hsl_color.get_blue() as u8);
-                    
-                },
-                UiPages::LedBrightness => {
-                    self.brightness = (self.brightness + 10).min(100);
-                },
-                _ => {}
-            }
-        },
-        2 => {
-            match self.setting {
-                UiPages::LedColor => {
-                        let hsl_color = Rgb::from_hex_str(&self.color).unwrap().to_hsl();
-                        let hsl_color = Hsl::from((hsl_color.get_hue() - 10.0).min(359.0), hsl_color.get_saturation(), hsl_color.get_lightness());
-                        self.color = format!("{:02x}{:02x}{:02x}", hsl_color.get_red() as u8, hsl_color.get_green() as u8, hsl_color.get_blue() as u8);
-                    
-                },
-                UiPages::LedBrightness => {
-                    self.brightness = (self.brightness - 10).max(0);
-                },
-                _ => {}
-            }
+        let brightness_modifyer = |_color: &str, change_by: f32| -> (String, [u8; 3]) {
+            let hsl_color = Rgb::from_hex_str(_color).unwrap().to_hsl();
+            let hsl_color = Hsl::from((hsl_color.get_hue() + change_by).min(359.0), hsl_color.get_saturation(), hsl_color.get_lightness());
+            (format!("{:02x}{:02x}{:02x}", hsl_color.get_red() as u8, hsl_color.get_green() as u8, hsl_color.get_blue() as u8), 
+            [hsl_color.get_red() as u8, hsl_color.get_green() as u8, hsl_color.get_blue() as u8])
+        };
+        let mut new_color = None;
+        let mut new_brightness = None;
+        match self.setting {
+            UiPages::LedColor => {
+            new_color = match self.current_selection {
+                1 => Some(brightness_modifyer(&self.color, 10.0)),
+                2 => Some(brightness_modifyer(&self.color, -10.0)),
+                _ => None
+            }.and_then(|v| {
+                self.color = v.0;
+                Some(v.1)
+            });
             },
-           _ => {
-                return self.return_to.iter().find(|x| x.0 == self.current_selection).map(|x| x.1);
-           }
+            UiPages::LedBrightness => {
+            new_brightness = match self.current_selection{
+                1 => Some((self.brightness + 10).min(100)),
+                2 => Some((self.brightness - 10).max(0)),
+                _ => None
+            }.and_then(|v| {
+                self.brightness = v;
+                Some(v)
+            });
+            },
+            _ => {}
         }
-        // |<^ xxxxxxxxxx v>|
+        if new_color.is_some() || new_brightness.is_some() {
+            light_strip(&mut self.global_io.rgb_strip, &self.mode, new_color.or_else(||Some(brightness_modifyer(&self.color, 0.0).1)), new_brightness);
+        }
         None
     }
 }
