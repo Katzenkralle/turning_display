@@ -9,14 +9,14 @@ pub (crate) struct SettingsMenu {
     pub(crate) current_selection: usize,
 }
 
-impl MenuPage for SettingsMenu {
+impl <'a> MenuPage<'a> for SettingsMenu {
     
-    fn get_lcd(&mut self) -> Arc<Mutex<LCDdriver>> {
-        self.global_io.lcd.clone()
+    fn get_lcd(&'a mut self) -> &'a mut LCDdriver {
+        &mut self.global_io.lcd
     }
 
-    fn get_gpio_controller(&mut self) -> Arc<Mutex<GpioUi>> {
-        self.global_io.gpio_ui.clone()
+    fn get_gpio_ui(&'a mut self) -> &'a mut GpioUi {
+        &mut self.global_io.gpio_ui
     }
 
     fn teardown(&mut self) -> () {  

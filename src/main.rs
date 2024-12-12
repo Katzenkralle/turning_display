@@ -33,8 +33,7 @@ const STEPS_PER_ROUND: i32 = 6000;
 // > LCD: 0x27
 // r
 
-fn light_strip(strip: &mut Arc<Mutex<Strip>>,  mode: &str, color: Option<[u8; 3]>, _brightness: Option<u8>) -> () {
-    let mut lock = strip.lock().unwrap();
+fn light_strip(strip: &mut Strip,  mode: &str, color: Option<[u8; 3]>, _brightness: Option<u8>) -> () {
     match mode {
         "solid" => {
             if let Some(_color) = color  {
@@ -44,41 +43,40 @@ fn light_strip(strip: &mut Arc<Mutex<Strip>>,  mode: &str, color: Option<[u8; 3]
                         base_color[i] = (base_color[i] as f32*(_brightness as f32 / 100.0)).round() as u8;
                     }
                 }
-                lock.fill(Led::from_rgb_array(base_color));
+                strip.fill(Led::from_rgb_array(base_color));
             }
         },
         _ => (),
     }
 
-    let _ = lock.update();
+    let _ = strip.update();
 }
 
 
-fn walk_engine(gpio_engine: &mut Arc<Mutex<GpioEngine>>, go_right: bool, delta_distance: Option<u64>) -> i32 {
-    let mut lock = gpio_engine.lock().unwrap();
+fn walk_engine(gpio_engine: &mut GpioEngine, go_right: bool, delta_distance: Option<u64>) -> i32 {
     const STEPS_PER_WALK: i32 = 500;
     const DELAY: u64 = 200;
     let mut delta_pos = 1 * STEPS_PER_WALK;   
     if !go_right {
-        lock.dir.write(Level::Low);
+        gpio_engine.dir.write(Level::Low);
         delta_pos *= -1;
     } else {
-        lock.dir.write(Level::High);
+        gpio_engine.dir.write(Level::High);
     }
     
     if let Some(delta) = delta_distance {
         delta_pos = delta as i32;
         for _ in 0..delta {
-            lock.step.write(Level::High);
+            gpio_engine.step.write(Level::High);
             thread::sleep(std::time::Duration::from_micros(DELAY));
-            lock.step.write(Level::Low);
+            gpio_engine.step.write(Level::Low);
             thread::sleep(std::time::Duration::from_micros(DELAY));
         }
     } else {
     for _ in 0..STEPS_PER_WALK {
-        lock.step.write(Level::High);
+        gpio_engine.step.write(Level::High);
         thread::sleep(std::time::Duration::from_micros(DELAY));
-        lock.step.write(Level::Low);
+        gpio_engine.step.write(Level::Low);
         thread::sleep(std::time::Duration::from_micros(DELAY));
         }
     }
@@ -99,14 +97,13 @@ struct GpioEngine {
     sleep: OutputPin
 }
 
-#[derive( Clone)]
 struct GlobalIoHandlers {
-    lcd: Arc<Mutex<LCDdriver>>,
-    rgb_strip: Arc<Mutex<Strip>>,
-    gpio_ui: Arc<Mutex<GpioUi>>,
-    gpio_engine: Arc<Mutex<GpioEngine>>,
+    lcd: LCDdriver,
+    rgb_strip: Strip,
+    gpio_ui: GpioUi,
+    gpio_engine: GpioEngine,
 
-    db: Arc<Mutex<DbConn>>,
+    db: DbConn,
     active_preset: i32,
 }
 
@@ -130,12 +127,12 @@ impl GlobalIoHandlers {
        let active_preset = db.get_application_state().unwrap().active_preset;
         
         GlobalIoHandlers {  
-            lcd: Arc::new(Mutex::new(LCDdriver::new(Path::new("lcd_driver/lcd.sock"), true).unwrap())),
-            gpio_ui: Arc::new(Mutex::new(goip_ui)),
-            gpio_engine: Arc::new(Mutex::new(gpio_engine)),
-            rgb_strip: Arc::new(Mutex::new(strip)),
+            lcd: LCDdriver::new(Path::new("lcd_driver/lcd.sock"), true).unwrap(),
+            gpio_ui: goip_ui,
+            gpio_engine: gpio_engine,
+            rgb_strip: strip,
 
-            db: Arc::new(Mutex::new(db)),
+            db: db,
             active_preset: active_preset,
         }
     }
@@ -144,11 +141,19 @@ impl GlobalIoHandlers {
 fn main_prosessing_loop() -> () {
         //let (tx, rx) = unbounded::<String>();   
 
-        let mut menu_page_thread: Option<JoinHandle<UiPages>> = None;
-        let mut requested_menu = UiPages::Menu1;
-        
+        let mut menu_page_thread: Option<JoinHandle<(UiPages, GlobalIoHandlers)>>;
+        let mut requested_menu;
 
-        let global_io = GlobalIoHandlers::new();
+        let mut global_io = GlobalIoHandlers::new();
+
+        menu_page_thread = Some(thread::spawn(move || {
+            MainMenu {
+                global_io: global_io,
+                current_selection: 0,
+                return_to: vec![UiPages::Menu2, UiPages::ManualControll, UiPages::LedColor],
+            }.watch_loop("< mPos.   Led. >", vec![(0,1), (2, 7), (10, 14)])
+        }));
+
         println!("Entering main loop");
         loop {
             // Handle completed threads
@@ -157,129 +162,130 @@ fn main_prosessing_loop() -> () {
                     menu_page_thread = Some(thread);
                     continue;
                 }
-                requested_menu = thread.join().unwrap();
-            }
+                (requested_menu, global_io) = thread.join().unwrap();
+        
             
-            // Match the requested menu and start a new thread
-            println!("Spawning new {:?}", &requested_menu);
-            let _global_io = global_io.clone();
-            menu_page_thread = Some(match requested_menu {
-                UiPages::Menu1 => 
-                    thread::spawn(move || {
-                        MainMenu {
-                        global_io: _global_io,
-                        current_selection: 0,
-                        return_to: vec![UiPages::Menu2, UiPages::ManualControll, UiPages::LedColor],
-                    }.watch_loop("< mPos.   Led. >", vec![(0,1), (2, 7), (10, 14)])}),  
-                UiPages::Menu2 =>
-                    thread::spawn(move || {
-                        MainMenu {
-                            global_io: _global_io,
+                // Match the requested menu and start a new thread
+                println!("Spawning new {:?}", &requested_menu);
+
+                menu_page_thread = Some(match requested_menu {
+                    UiPages::Menu1 => 
+                        thread::spawn(move || {
+                            MainMenu {
+                            global_io: global_io,
                             current_selection: 0,
-                            return_to: vec![UiPages::ManualControll, UiPages::SettingsMenu, UiPages::Menu1],
-                        }.watch_loop("  Sav.   Set.  >", vec![(2, 6), (9, 13), (15, 16)])}),       
-                UiPages::SettingsMenu => 
-                    thread::spawn(move || {
-                        SettingsMenu {
-                            global_io: _global_io,
-                            current_selection: 0,
-                        }.watch_loop("<  Automatic ON?", vec![(0, 1), (13, 16)])
-                    }),
-                UiPages::ManualControll => 
-                    thread::spawn(move || {
-                        let app_state = _global_io.db.lock().unwrap().get_application_state().unwrap();
-                        ManualControllPage {
-                            global_io: _global_io.clone(),
-                            current_selection: 0,
-                            position: app_state.current_engine_state as u8,
-                        }.watch_loop("<UP  SAVE  DOWN>", vec![(0, 3), (5, 9), (11, 16)])
-                    }),
-                UiPages::LedColor =>
-                    thread::spawn(move || {
-                        let associates = _global_io.active_preset;
-                        let led_state: LedDb = _global_io.db
-                            .lock()
-                            .expect("DB lock could not be aquired")
-                            .get_associated_led(associates)
-                            .unwrap_or(vec![])
-                            .get(0)
-                            .cloned()
-                            .or_else(|| Some(LedDb {
-                                id: 0,
-                                color: "ff0000".to_string(),
-                                brightness: 100,
-                                mode: "solid".to_string(),
-                                associated_preset: Some(associates),
-                            }))
-                            .unwrap();
-                        LedCtrlPage {
-                            global_io: _global_io,
-                            current_selection: 0,
-                            return_to: vec![(0, UiPages::LedBrightness), (3, UiPages::LedMode)],
-                            color: led_state.color.clone(),
-                            brightness: led_state.brightness as u8,
-                            mode: led_state.mode.clone(),
-                            setting: UiPages::LedColor
-                        }.reactive_watch("<^   Color    v>", vec![(0, 1), (1, 2), (14, 15), (15, 16)])
-                    }),
-                UiPages::LedBrightness =>
-                    thread::spawn(move || {
-                        let associates = _global_io.active_preset;
-                        let led_state = _global_io.db
-                            .lock()
-                            .expect("DB lock could not be aquired")
-                            .get_associated_led(associates)
-                            .unwrap_or(vec![])
-                            .get(0)
-                            .cloned()
-                            .or_else(|| Some(LedDb {
-                                id: 0,
-                                color: "ff0000".to_string(),
-                                brightness: 100,
-                                mode: "solid".to_string(),
-                                associated_preset: Some(associates),
-                            }))
-                            .unwrap();
-                        LedCtrlPage {
-                            global_io: _global_io,
-                            current_selection: 0,
-                            return_to: vec![(0, UiPages::LedMode), (3, UiPages::LedColor)],
-                            color: led_state.color.clone(),
-                            brightness: led_state.brightness as u8,
-                            mode: led_state.mode.clone(),
-                            setting: UiPages::LedBrightness,
-                        }.reactive_watch("<^ Brightness v>", vec![(0, 1), (1, 2), (14, 15), (15, 16)])
-                    }),
-                UiPages::LedMode =>
-                    thread::spawn(move || {
-                        let associates = _global_io.active_preset;
-                        let led_state = _global_io.db
-                            .lock()
-                            .expect("DB lock could not be aquired")
-                            .get_associated_led(associates)
-                            .unwrap_or(vec![])
-                            .get(0)
-                            .cloned()
-                            .or_else(|| Some(LedDb {
-                                id: 0,
-                                color: "ff0000".to_string(),
-                                brightness: 100,
-                                mode: "solid".to_string(),
-                                associated_preset: Some(associates),
-                            }))
-                            .unwrap();
-                        LedCtrlPage {
-                            global_io: _global_io,
-                            current_selection: 0,
-                            return_to: vec![(0, UiPages::LedColor), (3, UiPages::LedBrightness)],
-                            color: led_state.color.clone(),
-                            brightness: led_state.brightness as u8,
-                            mode: led_state.mode.clone(),
-                            setting: UiPages::LedMode,
-                        }.reactive_watch("<^    Mode    v>", vec![(0, 1), (1, 2), (14, 15), (15, 16)])
-                    }),
-            });
-        }
+                            return_to: vec![UiPages::Menu2, UiPages::ManualControll, UiPages::LedColor],
+                        }.watch_loop("< mPos.   Led. >", vec![(0,1), (2, 7), (10, 14)])}),  
+                    UiPages::Menu2 =>
+                        thread::spawn(move || {
+                            MainMenu {
+                                global_io: global_io,
+                                current_selection: 0,
+                                return_to: vec![UiPages::ManualControll, UiPages::SettingsMenu, UiPages::Menu1],
+                            }.watch_loop("  Sav.   Set.  >", vec![(2, 6), (9, 13), (15, 16)])}),       
+                    UiPages::SettingsMenu => 
+                        thread::spawn(move || {
+                            SettingsMenu {
+                                global_io: global_io,
+                                current_selection: 0,
+                            }.watch_loop("<  Automatic ON?", vec![(0, 1), (13, 16)])
+                        }),
+                    UiPages::ManualControll => 
+                        thread::spawn(move || {
+                            let app_state = global_io.db.lock().unwrap().get_application_state().unwrap();
+                            ManualControllPage {
+                                global_io: global_io,
+                                current_selection: 0,
+                                position: app_state.current_engine_state as u8,
+                            }.watch_loop("<UP  SAVE  DOWN>", vec![(0, 3), (5, 9), (11, 16)])
+                        }),
+                    UiPages::LedColor =>
+                        thread::spawn(move || {
+                            let associates = global_io.active_preset;
+                            let led_state: LedDb = global_io.db
+                                .lock()
+                                .expect("DB lock could not be aquired")
+                                .get_associated_led(associates)
+                                .unwrap_or(vec![])
+                                .get(0)
+                                .cloned()
+                                .or_else(|| Some(LedDb {
+                                    id: 0,
+                                    color: "ff0000".to_string(),
+                                    brightness: 100,
+                                    mode: "solid".to_string(),
+                                    associated_preset: Some(associates),
+                                }))
+                                .unwrap();
+                            LedCtrlPage {
+                                global_io: global_io,
+                                current_selection: 0,
+                                return_to: vec![(0, UiPages::LedBrightness), (3, UiPages::LedMode)],
+                                color: led_state.color.clone(),
+                                brightness: led_state.brightness as u8,
+                                mode: led_state.mode.clone(),
+                                setting: UiPages::LedColor
+                            }.reactive_watch("<^   Color    v>", vec![(0, 1), (1, 2), (14, 15), (15, 16)])
+                        }),
+                    UiPages::LedBrightness =>
+                        thread::spawn(move || {
+                            let associates = global_io.active_preset;
+                            let led_state = global_io.db
+                                .lock()
+                                .expect("DB lock could not be aquired")
+                                .get_associated_led(associates)
+                                .unwrap_or(vec![])
+                                .get(0)
+                                .cloned()
+                                .or_else(|| Some(LedDb {
+                                    id: 0,
+                                    color: "ff0000".to_string(),
+                                    brightness: 100,
+                                    mode: "solid".to_string(),
+                                    associated_preset: Some(associates),
+                                }))
+                                .unwrap();
+                            LedCtrlPage {
+                                global_io: global_io,
+                                current_selection: 0,
+                                return_to: vec![(0, UiPages::LedMode), (3, UiPages::LedColor)],
+                                color: led_state.color.clone(),
+                                brightness: led_state.brightness as u8,
+                                mode: led_state.mode.clone(),
+                                setting: UiPages::LedBrightness,
+                            }.reactive_watch("<^ Brightness v>", vec![(0, 1), (1, 2), (14, 15), (15, 16)])
+                        }),
+                    UiPages::LedMode =>
+                        thread::spawn(move || {
+                            let associates = global_io.active_preset;
+                            let led_state = global_io.db
+                                .lock()
+                                .expect("DB lock could not be aquired")
+                                .get_associated_led(associates)
+                                .unwrap_or(vec![])
+                                .get(0)
+                                .cloned()
+                                .or_else(|| Some(LedDb {
+                                    id: 0,
+                                    color: "ff0000".to_string(),
+                                    brightness: 100,
+                                    mode: "solid".to_string(),
+                                    associated_preset: Some(associates),
+                                }))
+                                .unwrap();
+                            LedCtrlPage {
+                                global_io: global_io,
+                                current_selection: 0,
+                                return_to: vec![(0, UiPages::LedColor), (3, UiPages::LedBrightness)],
+                                color: led_state.color.clone(),
+                                brightness: led_state.brightness as u8,
+                                mode: led_state.mode.clone(),
+                                setting: UiPages::LedMode,
+                            }.reactive_watch("<^    Mode    v>", vec![(0, 1), (1, 2), (14, 15), (15, 16)])
+                        }),
+                });
+            }
+    }
     }
 
     

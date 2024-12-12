@@ -8,7 +8,7 @@ use crate::{LCDCommand, LCDArg, LCDProgramm};
 use colors_transform::{Color, Hsl, Rgb};
 use crate::light_strip;
 
-pub (crate) struct LedCtrlPage {
+pub (crate) struct  LedCtrlPage{
     pub (crate) global_io: GlobalIoHandlers,
     pub (crate) current_selection: usize,
     
@@ -19,14 +19,14 @@ pub (crate) struct LedCtrlPage {
     pub (crate) setting: UiPages
 }
 
-impl MenuPage for LedCtrlPage {
+impl <'a> MenuPage<'a> for LedCtrlPage {
     
-    fn get_lcd(&mut self) -> Arc<Mutex<LCDdriver>> {
-        self.global_io.lcd.clone()
+    fn get_lcd(&'a mut self) -> &'a mut LCDdriver {
+        &mut self.global_io.lcd
     }
 
-    fn get_gpio_controller(&mut self) -> Arc<Mutex<GpioUi>> {
-        self.global_io.gpio_ui.clone()
+    fn get_gpio_ui(&'a mut self) -> &'a mut GpioUi {
+        &mut self.global_io.gpio_ui
     }
 
     fn get_current_selection(&self) -> usize {
@@ -38,7 +38,7 @@ impl MenuPage for LedCtrlPage {
     }
 
     fn teardown(&mut self) -> () {
-        let db_lock = self.global_io.db.lock().unwrap();
+        let db_lock = &mut self.global_io.db;
         db_lock.update_led(self.global_io.active_preset,
             Some(&self.color),
             Some(self.brightness),
@@ -86,7 +86,7 @@ impl MenuPage for LedCtrlPage {
 
 impl LedCtrlPage {
     fn print_user_info(&mut self) -> (){
-        let mut lcd_lock = self.global_io.lcd.lock().unwrap();
+        let lcd_lock = &mut self.global_io.lcd;
         let _ = lcd_lock.exec(LCDCommand{
             cmd: LCDProgramm::Move,
             args: Some({
@@ -120,7 +120,8 @@ impl LedCtrlPage {
     }
 }
 
-impl ReactivePage for LedCtrlPage {
+impl <'a, 'b> ReactivePage<'b, 'a> for LedCtrlPage
+where 'a: 'b {
     fn pree_loop_hook(&mut self) -> () {
         self.print_user_info()
         // |<^ xxxxxxxxxx v>
@@ -129,5 +130,4 @@ impl ReactivePage for LedCtrlPage {
         self.print_user_info()
         // |<^ xxxxxxxxxx v>
     }
-    
 }

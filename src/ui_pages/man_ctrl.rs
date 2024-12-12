@@ -11,15 +11,21 @@ pub (crate) struct ManualControllPage {
     pub (crate)  current_selection: usize,
     pub (crate)  position: u8,
 }
-impl MenuPage for ManualControllPage {
+impl <'a> MenuPage<'a> for ManualControllPage {
     
-    fn get_lcd(&mut self) -> Arc<Mutex<LCDdriver>> {
-        self.global_io.lcd.clone()
+    fn get_lcd(&mut self) -> &'a mut LCDdriver {
+        &'a mut self.global_io.lcd
     }
 
-    fn get_gpio_controller(&mut self) -> Arc<Mutex<GpioUi>> {
-        self.global_io.gpio_ui.clone()
+
+    fn get_gpio_ui(&'a mut self) -> &'a mut GpioUi {
+        &mut self.global_io.gpio_ui
     }
+
+    fn get_global_io(&mut self) -> GlobalIoHandlers {
+        self.global_io
+    }
+
 
     fn get_current_selection(&self) -> usize {
         self.current_selection

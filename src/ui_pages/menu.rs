@@ -11,15 +11,20 @@ pub (crate) struct MainMenu {
     pub(crate) return_to: Vec<UiPages>,
 }
 
-impl MenuPage for MainMenu {
+impl <'a> MenuPage<'a> for MainMenu {
     
-    fn get_lcd(&mut self) -> Arc<Mutex<LCDdriver>> {
-        self.global_io.lcd.clone()
+    fn get_lcd(&'a mut self) -> &'a mut LCDdriver {
+        &mut self.global_io.lcd
     }
 
-    fn get_gpio_controller(&mut self) -> Arc<Mutex<GpioUi>> {
-        self.global_io.gpio_ui.clone()
+    fn get_gpio_ui(&'a mut self) -> &'a mut GpioUi {
+        &mut self.global_io.gpio_ui
     }
+
+    fn get_global_io(&'a mut self) -> GlobalIoHandlers {
+        self.global_io
+    }
+
 
     fn teardown(&mut self) -> () {
     }
