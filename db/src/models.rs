@@ -44,10 +44,18 @@ pub struct NewEngine {
 }
 
 #[derive(Debug)]
-#[derive(Queryable, Selectable, Insertable, AsChangeset)]
+#[derive(Insertable, Queryable, Selectable, AsChangeset)]
 #[diesel(table_name = crate::schema::ApplicationState)]
 pub struct ApplicationState {
     pub id: i32,
     pub active_preset: i32,
-    pub current_engine_state: i32,
+    pub current_engine_pos: i32,
+    pub engine_steps_per_rotation: i32,
+    pub delay_micros: i32,
+}
+
+#[derive(Insertable)]
+#[diesel(table_name = crate::schema::ApplicationState)]
+pub struct NewApplicationState {
+    pub id: i32,
 }

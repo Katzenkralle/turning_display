@@ -121,12 +121,14 @@ impl LedCtrlPage {
 }
 
 impl ReactivePage for LedCtrlPage {
-    fn pree_loop_hook(&mut self) -> () {
-        self.print_user_info()
+    fn pree_loop_hook(&mut self) -> Option<UiPages> {
+        self.print_user_info();
+        None
         // |<^ xxxxxxxxxx v>
     }
-    fn change_hook(&mut self) -> () {
-        self.print_user_info()
+    fn change_hook(&mut self) -> Option<UiPages> {
+        self.print_user_info();
+        None
         // |<^ xxxxxxxxxx v>
     }
     

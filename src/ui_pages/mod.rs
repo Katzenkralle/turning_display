@@ -1,8 +1,8 @@
 
 pub (crate) mod man_ctrl;
 pub (crate) mod menu;
-pub (crate) mod settings;
-pub(crate) mod led_ctrl;
+pub (crate) mod led_ctrl;
+pub (crate) mod calibrate;
 
 use crate::Duration;
 use crate::thread;
@@ -18,16 +18,17 @@ use crate::USER_INPUT_DELAY;
 pub (crate) enum UiPages {
     Menu1,
     Menu2,
+    Menu3,
     LedColor,
     LedBrightness,
     LedMode,
-    SettingsMenu,
     ManualControll,
+    CalibrationPage
 }
 
 
 pub (crate) trait MenuPage {
-    fn main_handler(&mut self, text: &str, option: Vec<(u8, u8)>, pree_loop_hook: Option<Box<dyn Fn(&mut Self) -> ()>>, loop_hook: Option<Box<dyn Fn(&mut Self) -> ()>>, change_hook: Option<Box<dyn Fn(&mut Self) -> ()>>) -> UiPages
+    fn main_handler(&mut self, text: &str, option: Vec<(u8, u8)>, pree_loop_hook: Option<Box<dyn Fn(&mut Self) -> Option<UiPages>>>, loop_hook: Option<Box<dyn Fn(&mut Self) -> Option<UiPages>>>, change_hook: Option<Box<dyn Fn(&mut Self) -> Option<UiPages>>>) -> UiPages
     {
         thread::sleep(Duration::from_millis(USER_INPUT_DELAY));
         let lcd_binding = self.get_lcd();
@@ -66,9 +67,14 @@ pub (crate) trait MenuPage {
             
             if let Some(ref func) = loop_hook {
                 lcd_lock = None;
-                func(self);
+                let a = func(self);
+                if a.is_some() {
+                    self.teardown();
+                    return a.unwrap();
+                }
                 lcd_lock = Some(lcd_binding.lock().unwrap());
-            }
+                }
+            
             for (level, handler) in actions.iter() {
                 if *level == Level::Low {
                     gpio_lock = None;
@@ -107,7 +113,11 @@ pub (crate) trait MenuPage {
                 if last_selection == -2 {
                     if let Some(ref func) = pree_loop_hook {
                         lcd_lock = None;
-                        func(self);
+                        let a = func(self);
+                        if a.is_some() {
+                            self.teardown();
+                            return a.unwrap();
+                        }
                         lcd_lock = Some(lcd_binding.lock().unwrap());
                     }
                 }
@@ -116,7 +126,11 @@ pub (crate) trait MenuPage {
             if change {
                 if let Some(ref func) = change_hook {
                     lcd_lock = None;
-                    func(self);
+                    let a = func(self);
+                    if a.is_some() {
+                        self.teardown();
+                        return a.unwrap();
+                    }
                     lcd_lock = Some(lcd_binding.lock().unwrap());
                 }
                 if loop_start_time.elapsed() < Duration::from_millis(USER_INPUT_DELAY) {
@@ -157,9 +171,9 @@ pub (crate) trait MenuPage {
 
 
 pub (crate) trait ReactivePage: MenuPage + 'static {
-    fn loop_hook(&mut self) -> (){}
-    fn change_hook(&mut self) -> (){}
-    fn pree_loop_hook(&mut self) -> (){}
+    fn loop_hook(&mut self) -> Option<UiPages>{None}
+    fn change_hook(&mut self) -> Option<UiPages>{None}
+    fn pree_loop_hook(&mut self) -> Option<UiPages>{None}
 
     fn reactive_watch(&mut self, text: &str, option: Vec<(u8, u8)>) -> UiPages {
         self.main_handler(text, option, Some(Box::new(Self::pree_loop_hook)), Some(Box::new(Self::loop_hook)), Some(Box::new(Self::change_hook)))

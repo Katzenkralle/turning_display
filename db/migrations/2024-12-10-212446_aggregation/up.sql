@@ -18,5 +18,7 @@ CREATE TABLE Led (
 CREATE TABLE ApplicationState (
     id INTEGER PRIMARY KEY NOT NULL,
     active_preset INTEGER NOT NULL DEFAULT 0,
-    current_engine_state INTEGER NOT NULL DEFAULT 0
+    current_engine_pos INTEGER NOT NULL DEFAULT 0,
+    engine_steps_per_rotation INTEGER NOT NULL DEFAULT 100,
+    delay_micros INTEGER NOT NULL DEFAULT 200
 );

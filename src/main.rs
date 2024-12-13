@@ -13,7 +13,7 @@ use sk6812_rpi::strip::{Bus, Strip};
 use sk6812_rpi::led::Led as Led;
 
 mod ui_pages;
-use ui_pages::{man_ctrl::ManualControllPage, menu::MainMenu, settings::SettingsMenu, led_ctrl::LedCtrlPage, UiPages, MenuPage, ReactivePage};
+use ui_pages::{man_ctrl::ManualControllPage, menu::MainMenu, led_ctrl::LedCtrlPage, calibrate::CalibrationPage , UiPages, MenuPage, ReactivePage};
 
 const USER_INPUT_DELAY: u64 = 200;
 const STEPS_PER_ROUND: i32 = 6000;
@@ -54,35 +54,43 @@ fn light_strip(strip: &mut Arc<Mutex<Strip>>,  mode: &str, color: Option<[u8; 3]
 }
 
 
-fn walk_engine(gpio_engine: &mut Arc<Mutex<GpioEngine>>, go_right: bool, delta_distance: Option<u64>) -> i32 {
+fn walk_engine(gpio_engine: &mut Arc<Mutex<GpioEngine>>, go_right: bool, delta_distance: Option<u64>) -> (i32, bool) {
     let mut lock = gpio_engine.lock().unwrap();
-    const STEPS_PER_WALK: i32 = 500;
-    const DELAY: u64 = 200;
-    let mut delta_pos = 1 * STEPS_PER_WALK;   
+    let steps_per_round = lock.stepps_per_round;
+    let delay_micros = lock.delay_micros;
+    let mut delta_pos: i32;
+    let mut hit_calibration = false;
+    if let Some(delta) = delta_distance {
+        delta_pos = delta as i32;
+    } else {
+        delta_pos = 1 * steps_per_round as i32;   
+    }
     if !go_right {
         lock.dir.write(Level::Low);
         delta_pos *= -1;
     } else {
         lock.dir.write(Level::High);
     }
-    
-    if let Some(delta) = delta_distance {
-        delta_pos = delta as i32;
-        for _ in 0..delta {
+    let mut run_engine = |i: i32| -> () {
+            if lock.calibrate.read() == Level::Low {
+                delta_pos = delta_pos - i;
+                hit_calibration = true;
+            }
             lock.step.write(Level::High);
-            thread::sleep(std::time::Duration::from_micros(DELAY));
+            thread::sleep(std::time::Duration::from_micros(delay_micros));
             lock.step.write(Level::Low);
-            thread::sleep(std::time::Duration::from_micros(DELAY));
+            thread::sleep(std::time::Duration::from_micros(delay_micros));
+    };
+    if let Some(delta) = delta_distance {
+        for i in 0..delta {
+            run_engine(i as i32);
         }
     } else {
-    for _ in 0..STEPS_PER_WALK {
-        lock.step.write(Level::High);
-        thread::sleep(std::time::Duration::from_micros(DELAY));
-        lock.step.write(Level::Low);
-        thread::sleep(std::time::Duration::from_micros(DELAY));
+    for i in 0..steps_per_round {
+        run_engine(i as i32);
         }
     }
-    delta_pos
+    (delta_pos, hit_calibration)
 }
 
 
@@ -96,7 +104,17 @@ struct GpioUi {
 struct GpioEngine {
     dir: OutputPin,
     step: OutputPin,
-    sleep: OutputPin
+    sleep: OutputPin,
+    calibrate: InputPin,
+
+    stepps_per_round: u64,
+    delay_micros: u64,
+}
+
+impl GpioEngine {
+    fn update_steps_per_round(&mut self, steps_per_round: u64) -> () {
+        self.stepps_per_round = steps_per_round;
+    }
 }
 
 #[derive( Clone)]
@@ -112,6 +130,10 @@ struct GlobalIoHandlers {
 
 impl GlobalIoHandlers {
     fn new() -> Self {
+        let strip = Strip::new(Bus::Spi0, 69).unwrap();
+        let db = DbConn::establish_connection();
+        let active_preset = db.get_application_state().unwrap().active_preset;
+
         let goip_ui = GpioUi {
             home: Gpio::new().unwrap().get(23).unwrap().into_input_pullup(),
             left: Gpio::new().unwrap().get(25).unwrap().into_input_pullup(),
@@ -122,12 +144,14 @@ impl GlobalIoHandlers {
             dir: Gpio::new().unwrap().get(20).unwrap().into_output(),
             step: Gpio::new().unwrap().get(21).unwrap().into_output(),
             sleep: Gpio::new().unwrap().get(26).unwrap().into_output(),
+            calibrate: Gpio::new().unwrap().get(19).unwrap().into_input(),
+            
+            stepps_per_round: db.get_application_state().unwrap().engine_steps_per_rotation as u64,
+            delay_micros: db.get_application_state().unwrap().engine_steps_per_rotation as u64,
         };
         
         gpio_engine.sleep.write(Level::Low);
-        let strip = Strip::new(Bus::Spi0, 69).unwrap();
-       let db = DbConn::establish_connection();
-       let active_preset = db.get_application_state().unwrap().active_preset;
+
         
         GlobalIoHandlers {  
             lcd: Arc::new(Mutex::new(LCDdriver::new(Path::new("lcd_driver/lcd.sock"), true).unwrap())),
@@ -169,21 +193,22 @@ fn main_prosessing_loop() -> () {
                         MainMenu {
                         global_io: _global_io,
                         current_selection: 0,
-                        return_to: vec![UiPages::Menu2, UiPages::ManualControll, UiPages::LedColor],
+                        return_to: vec![UiPages::Menu2, UiPages::ManualControll, UiPages::LedColor, UiPages::Menu3],
                     }.watch_loop("< mPos.   Led. >", vec![(0,1), (2, 7), (10, 14)])}),  
                 UiPages::Menu2 =>
                     thread::spawn(move || {
                         MainMenu {
                             global_io: _global_io,
-                            current_selection: 0,
-                            return_to: vec![UiPages::ManualControll, UiPages::SettingsMenu, UiPages::Menu1],
-                        }.watch_loop("  Sav.   Set.  >", vec![(2, 6), (9, 13), (15, 16)])}),       
-                UiPages::SettingsMenu => 
+                            current_selection: 2,
+                            return_to: vec![UiPages::ManualControll, UiPages::Menu2, UiPages::Menu1],
+                        }.watch_loop("  Sav.   XXX.  >", vec![(2, 6), (9, 13), (15, 16)])}),       
+                UiPages::Menu3 => 
                     thread::spawn(move || {
-                        SettingsMenu {
+                        MainMenu {
                             global_io: _global_io,
+                            return_to: vec![UiPages::Menu1, UiPages::CalibrationPage],
                             current_selection: 0,
-                        }.watch_loop("<  Automatic ON?", vec![(0, 1), (13, 16)])
+                        }.watch_loop("<    Calibration", vec![(0, 1), (6, 16)])
                     }),
                 UiPages::ManualControll => 
                     thread::spawn(move || {
@@ -191,7 +216,7 @@ fn main_prosessing_loop() -> () {
                         ManualControllPage {
                             global_io: _global_io.clone(),
                             current_selection: 0,
-                            position: app_state.current_engine_state as u8,
+                            position: app_state.current_engine_pos as u8,
                         }.watch_loop("<UP  SAVE  DOWN>", vec![(0, 3), (5, 9), (11, 16)])
                     }),
                 UiPages::LedColor =>
@@ -277,6 +302,13 @@ fn main_prosessing_loop() -> () {
                             mode: led_state.mode.clone(),
                             setting: UiPages::LedMode,
                         }.reactive_watch("<^    Mode    v>", vec![(0, 1), (1, 2), (14, 15), (15, 16)])
+                    }),
+                UiPages::CalibrationPage =>
+                    thread::spawn(move || {
+                        CalibrationPage {
+                            global_io: _global_io,
+                            current_selection: 0,
+                        }.watch_loop("Calibrating STOP", vec![(14, 16)])
                     }),
             });
         }

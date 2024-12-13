@@ -4,7 +4,9 @@ diesel::table! {
     ApplicationState (id) {
         id -> Integer,
         active_preset -> Integer,
-        current_engine_state -> Integer,
+        current_engine_pos -> Integer,
+        engine_steps_per_rotation -> Integer,
+        delay_micros -> Integer,
     }
 }
 

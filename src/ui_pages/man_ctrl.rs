@@ -39,12 +39,16 @@ impl MenuPage for ManualControllPage {
             let mut acumulated_distance = 0;
             _global_io.gpio_engine.lock().unwrap().sleep.set_high();
             loop {
-                acumulated_distance = acumulated_distance + walk_engine(&mut self.global_io.gpio_engine, go_right, None);
+                let delta = walk_engine(&mut self.global_io.gpio_engine, go_right, None);
+                if delta.1 {
+                    acumulated_distance = 0;
+                }
+                acumulated_distance = acumulated_distance + delta.0;
                 if input_lock.enter.read() != Level::Low {
                     break
                 }
             }
-            acumulated_distance = self.global_io.db.lock().unwrap().get_application_state().unwrap().current_engine_state + acumulated_distance;
+            acumulated_distance = self.global_io.db.lock().unwrap().get_application_state().unwrap().current_engine_pos + acumulated_distance;
             if acumulated_distance > STEPS_PER_ROUND {
                 acumulated_distance = acumulated_distance - STEPS_PER_ROUND;
             } else if acumulated_distance < 0 {
@@ -52,6 +56,7 @@ impl MenuPage for ManualControllPage {
             }
             self.global_io.db.lock().unwrap().update_application_state(
                 Some(acumulated_distance),
+                None,
                 None)
                 .unwrap();
             _global_io.gpio_engine.lock().unwrap().sleep.set_low();
@@ -63,7 +68,7 @@ impl MenuPage for ManualControllPage {
             1 => {
                 let db_lock = self.global_io.db.lock().unwrap();
                 db_lock.update_engin(self.global_io.active_preset,
-                    Some(db_lock.get_application_state().unwrap().current_engine_state),
+                    Some(db_lock.get_application_state().unwrap().current_engine_pos),
                     Some(true))
                 .unwrap();
                 return Some(UiPages::Menu1);

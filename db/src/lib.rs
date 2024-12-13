@@ -1,5 +1,6 @@
 use diesel::prelude::*;
 use dotenvy::dotenv;
+use schema::ApplicationState::engine_steps_per_rotation;
 use std::env;
 
 pub mod models;
@@ -21,10 +22,8 @@ impl DbConn {
         use self::schema::ApplicationState::dsl::*;
         if ApplicationState.filter(id.eq(0)).load::<models::ApplicationState>(&mut connection).unwrap().len() == 0 {
             diesel::insert_into(ApplicationState)
-                .values(models::ApplicationState{
+                .values(models::NewApplicationState{
                     id: 0,
-                    current_engine_state: 0,
-                    active_preset: 0,
                 })
                 .execute(&mut connection).unwrap();
         }
@@ -109,18 +108,23 @@ impl DbConn {
     }
 
 
-    pub fn update_application_state(&mut self, current_engine_possition: Option<i32>, _active_preset: Option<i32>) -> Result<(), diesel::result::Error> {
+    pub fn update_application_state(&mut self, current_engine_possition: Option<i32>, _active_preset: Option<i32>, _engine_steps_per_rotation: Option<u64>) -> Result<(), diesel::result::Error> {
         use self::schema::ApplicationState::dsl::*;
         let lock = &mut *self.0.lock()
             .map_err(|_| diesel::result::Error::RollbackTransaction)?;
         if let Some(current_engine_possition) = current_engine_possition {
             diesel::update(ApplicationState.filter(id.eq(0)))
-            .set(current_engine_state.eq(current_engine_possition))
+            .set(engine_steps_per_rotation.eq(current_engine_possition))
             .execute(lock)?;
         }
         if let Some(_active_preset) = _active_preset {
             diesel::update(ApplicationState.filter(id.eq(0)))
             .set(active_preset.eq(active_preset))
+            .execute(lock)?;
+        }
+        if let Some(_engine_steps_per_rotation) = _engine_steps_per_rotation {
+            diesel::update(ApplicationState.filter(id.eq(0)))
+            .set(engine_steps_per_rotation.eq(_engine_steps_per_rotation as i32))
             .execute(lock)?;
         }
         Ok(())
