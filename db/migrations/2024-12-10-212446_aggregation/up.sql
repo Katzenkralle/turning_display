@@ -20,5 +20,7 @@ CREATE TABLE ApplicationState (
     active_preset INTEGER NOT NULL DEFAULT 0,
     current_engine_pos INTEGER NOT NULL DEFAULT 0,
     engine_steps_per_rotation INTEGER NOT NULL DEFAULT 100,
-    delay_micros INTEGER NOT NULL DEFAULT 200
+    delay_micros INTEGER NOT NULL DEFAULT 200,
+    automatic_mode BOOLEAN NOT NULL DEFAULT FALSE,
+    automatic_mode_delay INTEGER NOT NULL DEFAULT 60
 );

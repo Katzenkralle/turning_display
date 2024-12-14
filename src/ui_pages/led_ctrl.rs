@@ -39,7 +39,7 @@ impl MenuPage for LedCtrlPage {
 
     fn teardown(&mut self) -> () {
         let db_lock = self.global_io.db.lock().unwrap();
-        db_lock.update_led(self.global_io.active_preset,
+        db_lock.update_led(*self.global_io.active_preset.lock().unwrap(),
             Some(&self.color),
             Some(self.brightness),
             Some(&self.mode)).unwrap();
@@ -82,6 +82,14 @@ impl MenuPage for LedCtrlPage {
         }
         None
     }
+    fn get_termination(&self) -> Option<UiPages> {
+        if let Ok(signal) = self.global_io.terminate.try_lock() {
+            if let Some(page) = *signal {
+                return Some(page);
+            }
+        }
+        None
+    }
 }
 
 impl LedCtrlPage {
@@ -117,6 +125,14 @@ impl LedCtrlPage {
                 map
             })
         });
+    }
+    fn get_termination(&self) -> Option<UiPages> {
+        if let Ok(signal) = self.global_io.terminate.try_lock() {
+            if let Some(page) = *signal {
+                return Some(page);
+            }
+        }
+        None
     }
 }
 

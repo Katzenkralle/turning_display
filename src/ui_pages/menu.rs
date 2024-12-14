@@ -41,5 +41,13 @@ impl MenuPage for MainMenu {
     fn home_handler(&mut self, _: u8) -> Option<UiPages> {
         None
     }
+    fn get_termination(&self) -> Option<UiPages> {
+        if let Ok(signal) = self.global_io.terminate.try_lock() {
+            if let Some(page) = *signal {
+                return Some(page);
+            }
+        }
+        None
+    }
 
 }

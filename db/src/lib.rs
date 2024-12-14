@@ -1,6 +1,6 @@
 use diesel::prelude::*;
 use dotenvy::dotenv;
-use schema::ApplicationState::engine_steps_per_rotation;
+use schema::ApplicationState::{automatic_mode, engine_steps_per_rotation};
 use std::env;
 
 pub mod models;
@@ -107,8 +107,48 @@ impl DbConn {
         Ok(())
     }
 
+    pub fn get_engine_preset(&self, _associated_preset: i32) -> Result<models::Engine, diesel::result::Error> {
+        use self::schema::Engine::dsl::*;
+        let lock = &mut *self.0.lock()
+            .map_err(|_| diesel::result::Error::RollbackTransaction)?;
+        Engine
+            .filter(associated_preset.eq(_associated_preset))
+            .first(lock)
+    }
 
-    pub fn update_application_state(&mut self, current_engine_possition: Option<i32>, _active_preset: Option<i32>, _engine_steps_per_rotation: Option<u64>) -> Result<(), diesel::result::Error> {
+    pub fn get_all_presets(&self) -> Result<Vec<i32>, diesel::result::Error> {
+        use crate::schema::Engine::dsl as engine_dsl;
+        use crate::schema::Led::dsl as led_dsl;
+        let lock = &mut *self.0.lock()
+        .map_err(|_| diesel::result::Error::RollbackTransaction)?;
+        // Query for Engine table
+        let engine_presets: Vec<i32> = engine_dsl::Engine
+            .select(engine_dsl::associated_preset)
+            .filter(engine_dsl::associated_preset.is_not_null())
+            .load::<Option<i32>>(lock)?
+            .into_iter()
+            .filter_map(|p| p) // Remove `None` values
+            .collect();
+    
+        // Query for Led table
+        let led_presets: Vec<i32> = led_dsl::Led
+            .select(led_dsl::associated_preset)
+            .filter(led_dsl::associated_preset.is_not_null())
+            .load::<Option<i32>>(lock)?
+            .into_iter()
+            .filter_map(|p| p) // Remove `None` values
+            .collect();
+    
+        // Combine both vectors and deduplicate
+        let mut all_presets = engine_presets;
+        all_presets.extend(led_presets);
+        all_presets.sort_unstable();
+        all_presets.dedup();
+    
+        Ok(all_presets)
+    }
+
+    pub fn update_application_state(&mut self, current_engine_possition: Option<i32>, _active_preset: Option<i32>, _engine_steps_per_rotation: Option<u64>, _automatic_mode: Option<bool>, _automatic_mode_delay: Option<i32> ) -> Result<(), diesel::result::Error> {
         use self::schema::ApplicationState::dsl::*;
         let lock = &mut *self.0.lock()
             .map_err(|_| diesel::result::Error::RollbackTransaction)?;
@@ -125,6 +165,17 @@ impl DbConn {
         if let Some(_engine_steps_per_rotation) = _engine_steps_per_rotation {
             diesel::update(ApplicationState.filter(id.eq(0)))
             .set(engine_steps_per_rotation.eq(_engine_steps_per_rotation as i32))
+            .execute(lock)?;
+        }
+        if let Some(_automatic_mode) = _automatic_mode {
+            diesel::update(ApplicationState.filter(id.eq(0)))
+            .set(automatic_mode.eq(_automatic_mode))
+            .execute(lock)?;
+        }
+
+        if let Some(_automatic_mode_delay) = _automatic_mode_delay {
+            diesel::update(ApplicationState.filter(id.eq(0)))
+            .set(automatic_mode_delay.eq(_automatic_mode_delay))
             .execute(lock)?;
         }
         Ok(())

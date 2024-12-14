@@ -57,7 +57,9 @@ impl MenuPage for ManualControllPage {
             self.global_io.db.lock().unwrap().update_application_state(
                 Some(acumulated_distance),
                 None,
-                None)
+                None,
+                None,
+                None,)
                 .unwrap();
             _global_io.gpio_engine.lock().unwrap().sleep.set_low();
         };
@@ -67,7 +69,7 @@ impl MenuPage for ManualControllPage {
             },
             1 => {
                 let db_lock = self.global_io.db.lock().unwrap();
-                db_lock.update_engin(self.global_io.active_preset,
+                db_lock.update_engin(*self.global_io.active_preset.lock().unwrap(),
                     Some(db_lock.get_application_state().unwrap().current_engine_pos),
                     Some(true))
                 .unwrap();
@@ -86,4 +88,12 @@ impl MenuPage for ManualControllPage {
         Some(UiPages::Menu1)
     }
 
+    fn get_termination(&self) -> Option<UiPages> {
+        if let Ok(signal) = self.global_io.terminate.try_lock() {
+            if let Some(page) = *signal {
+                return Some(page);
+            }
+        }
+        None
+    }
 }

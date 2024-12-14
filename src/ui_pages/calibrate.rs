@@ -42,6 +42,10 @@ impl MenuPage for CalibrationPage {
         None
     }
 
+    fn get_termination(&self) -> Option<UiPages> {
+        None
+    }
+
 }
 
 impl ReactivePage for CalibrationPage {
@@ -113,10 +117,11 @@ impl ReactivePage for CalibrationPage {
                 }) });
             
             let mut db_lock = self.global_io.db.lock().unwrap();
-            db_lock.update_application_state(Some(0), None, Some(pos_counnter)).unwrap();
+            db_lock.update_application_state(Some(0), None, Some(pos_counnter), None, None).unwrap();
             self.global_io.gpio_engine.lock().unwrap().update_steps_per_round(pos_counnter as u64);
             Some(UiPages::Menu1)
             
         }
+        
     }    
     

@@ -3,6 +3,7 @@ pub (crate) mod man_ctrl;
 pub (crate) mod menu;
 pub (crate) mod led_ctrl;
 pub (crate) mod calibrate;
+pub (crate) mod select_target;
 
 use crate::Duration;
 use crate::thread;
@@ -23,7 +24,8 @@ pub (crate) enum UiPages {
     LedBrightness,
     LedMode,
     ManualControll,
-    CalibrationPage
+    CalibrationPage,
+    MoveToTarget
 }
 
 
@@ -139,7 +141,10 @@ pub (crate) trait MenuPage {
                 //thread::sleep(Duration::from_millis(USER_INPUT_DELAY));
 
             }
-            
+            if let Some(signal) = self.get_termination() {
+                self.teardown();
+                return signal;
+            }
         }
     }
     fn watch_loop(&mut self, text: &str, option: Vec<(u8, u8)>) -> UiPages {
@@ -150,6 +155,7 @@ pub (crate) trait MenuPage {
     fn get_current_selection(&self) -> usize;
     fn set_current_selection(&mut self, selection: usize) -> ();
     fn teardown(&mut self) -> ();
+    fn get_termination(&self) -> Option<UiPages>;
 
     fn home_handler(&mut self, options_len: u8) -> Option<UiPages> {
         Some(UiPages::Menu1)

@@ -1,7 +1,5 @@
 use diesel::prelude::*;
 
-use crate::schema::ApplicationState::id;
-
 #[derive(Debug)]
 #[derive(Queryable, Selectable, AsChangeset, Clone)]
 #[diesel(table_name = crate::schema::Led)]
@@ -52,6 +50,8 @@ pub struct ApplicationState {
     pub current_engine_pos: i32,
     pub engine_steps_per_rotation: i32,
     pub delay_micros: i32,
+    pub automatic_mode: bool,
+    pub automatic_mode_delay: i32,
 }
 
 #[derive(Insertable)]

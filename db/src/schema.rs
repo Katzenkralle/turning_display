@@ -7,6 +7,8 @@ diesel::table! {
         current_engine_pos -> Integer,
         engine_steps_per_rotation -> Integer,
         delay_micros -> Integer,
+        automatic_mode -> Bool,
+        automatic_mode_delay -> Integer,
     }
 }
 

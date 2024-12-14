@@ -13,8 +13,8 @@ use sk6812_rpi::strip::{Bus, Strip};
 use sk6812_rpi::led::Led as Led;
 
 mod ui_pages;
-use ui_pages::{man_ctrl::ManualControllPage, menu::MainMenu, led_ctrl::LedCtrlPage, calibrate::CalibrationPage , UiPages, MenuPage, ReactivePage};
-
+use ui_pages::{man_ctrl::ManualControllPage, menu::MainMenu, select_target::MoveToTarget, led_ctrl::LedCtrlPage, calibrate::CalibrationPage , UiPages, MenuPage, ReactivePage};
+use rand::Rng;
 const USER_INPUT_DELAY: u64 = 200;
 const STEPS_PER_ROUND: i32 = 6000;
 // Pinout:
@@ -125,7 +125,11 @@ struct GlobalIoHandlers {
     gpio_engine: Arc<Mutex<GpioEngine>>,
 
     db: Arc<Mutex<DbConn>>,
-    active_preset: i32,
+    active_preset: Arc<Mutex<i32>>,
+    automatic_mode_delay: Arc<Mutex<i32>>,
+    automatic_enabled: Arc<Mutex<bool>>,
+
+    terminate: Arc<Mutex<Option<UiPages>>>,
 }
 
 impl GlobalIoHandlers {
@@ -159,8 +163,12 @@ impl GlobalIoHandlers {
             gpio_engine: Arc::new(Mutex::new(gpio_engine)),
             rgb_strip: Arc::new(Mutex::new(strip)),
 
+            automatic_enabled: Arc::new(Mutex::new(db.get_application_state().unwrap().automatic_mode)),
+            automatic_mode_delay: Arc::new(Mutex::new(db.get_application_state().unwrap().automatic_mode_delay)),
             db: Arc::new(Mutex::new(db)),
-            active_preset: active_preset,
+            active_preset: Arc::new(Mutex::new(active_preset)),
+
+            terminate: Arc::new(Mutex::new(None)),
         }
     }
 }
@@ -168,12 +176,33 @@ impl GlobalIoHandlers {
 fn main_prosessing_loop() -> () {
         //let (tx, rx) = unbounded::<String>();   
 
+        let get_led_state = |_global_io: &GlobalIoHandlers| -> LedDb {
+            let associates = *_global_io.active_preset.lock().unwrap();
+            _global_io.db
+                .lock()
+                .expect("DB lock could not be aquired")
+                .get_associated_led(associates)
+                .unwrap_or(vec![])
+                .get(0)
+                .cloned()
+                .or_else(|| Some(LedDb {
+                    id: 0,
+                    color: "ff0000".to_string(),
+                    brightness: 100,
+                    mode: "solid".to_string(),
+                    associated_preset: Some(associates),
+                }))
+                .unwrap()
+        };
+
         let mut menu_page_thread: Option<JoinHandle<UiPages>> = None;
         let mut requested_menu = UiPages::Menu1;
         
 
         let global_io = GlobalIoHandlers::new();
         println!("Entering main loop");
+        let mut last_move = std::time::Instant::now();
+        let mut move_to_target = 0; 
         loop {
             // Handle completed threads
             if let Some(thread) = menu_page_thread.take() {
@@ -182,6 +211,7 @@ fn main_prosessing_loop() -> () {
                     continue;
                 }
                 requested_menu = thread.join().unwrap();
+                *global_io.terminate.lock().unwrap() = None;
             }
             
             // Match the requested menu and start a new thread
@@ -221,22 +251,7 @@ fn main_prosessing_loop() -> () {
                     }),
                 UiPages::LedColor =>
                     thread::spawn(move || {
-                        let associates = _global_io.active_preset;
-                        let led_state: LedDb = _global_io.db
-                            .lock()
-                            .expect("DB lock could not be aquired")
-                            .get_associated_led(associates)
-                            .unwrap_or(vec![])
-                            .get(0)
-                            .cloned()
-                            .or_else(|| Some(LedDb {
-                                id: 0,
-                                color: "ff0000".to_string(),
-                                brightness: 100,
-                                mode: "solid".to_string(),
-                                associated_preset: Some(associates),
-                            }))
-                            .unwrap();
+                        let led_state = get_led_state(&_global_io);
                         LedCtrlPage {
                             global_io: _global_io,
                             current_selection: 0,
@@ -249,22 +264,7 @@ fn main_prosessing_loop() -> () {
                     }),
                 UiPages::LedBrightness =>
                     thread::spawn(move || {
-                        let associates = _global_io.active_preset;
-                        let led_state = _global_io.db
-                            .lock()
-                            .expect("DB lock could not be aquired")
-                            .get_associated_led(associates)
-                            .unwrap_or(vec![])
-                            .get(0)
-                            .cloned()
-                            .or_else(|| Some(LedDb {
-                                id: 0,
-                                color: "ff0000".to_string(),
-                                brightness: 100,
-                                mode: "solid".to_string(),
-                                associated_preset: Some(associates),
-                            }))
-                            .unwrap();
+                        let led_state = get_led_state(&_global_io);
                         LedCtrlPage {
                             global_io: _global_io,
                             current_selection: 0,
@@ -277,22 +277,7 @@ fn main_prosessing_loop() -> () {
                     }),
                 UiPages::LedMode =>
                     thread::spawn(move || {
-                        let associates = _global_io.active_preset;
-                        let led_state = _global_io.db
-                            .lock()
-                            .expect("DB lock could not be aquired")
-                            .get_associated_led(associates)
-                            .unwrap_or(vec![])
-                            .get(0)
-                            .cloned()
-                            .or_else(|| Some(LedDb {
-                                id: 0,
-                                color: "ff0000".to_string(),
-                                brightness: 100,
-                                mode: "solid".to_string(),
-                                associated_preset: Some(associates),
-                            }))
-                            .unwrap();
+                        let led_state = get_led_state(&_global_io);
                         LedCtrlPage {
                             global_io: _global_io,
                             current_selection: 0,
@@ -310,7 +295,35 @@ fn main_prosessing_loop() -> () {
                             current_selection: 0,
                         }.watch_loop("Calibrating STOP", vec![(14, 16)])
                     }),
+                UiPages::MoveToTarget =>{
+                    let _move_target = move_to_target.clone();
+                    move_to_target = 0;
+                    thread::spawn(move || {
+                        MoveToTarget {
+                            global_io: _global_io,
+                            current_selection: 0,
+                            target: _move_target,
+                        }.watch_loop("1 2 3 4 5 6 7 8 ", vec![ (0, 1), (2, 3), (4, 5), (6, 7), (8, 9), (10, 11), (12, 13), (14, 15)])
+                    })
+                },
             });
+            if *global_io.automatic_enabled.lock().unwrap()  {
+                if (last_move.elapsed().as_secs() / 60) as i32 >  global_io.automatic_mode_delay.try_lock().and_then(|a| Ok(*a)).unwrap_or(core::i32::MAX) {
+                    // signal termination and nxt menu 
+                    *global_io.terminate.lock().unwrap() = Some(UiPages::MoveToTarget);
+                    last_move = std::time::Instant::now();
+                    let existing_presets = global_io.db.lock().unwrap().get_all_presets().unwrap();
+                    let mut rng = rand::thread_rng();
+                    loop {
+                        let new_target = existing_presets[rng.gen_range(0..existing_presets.len())];
+                        if new_target != *global_io.active_preset.lock().unwrap() {
+                            move_to_target = new_target;
+                            break;
+                        }
+                    }
+                    }
+                }
+
         }
     }
 
