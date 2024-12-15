@@ -20,10 +20,10 @@ impl DbConn {
             .expect(&format!("Error connecting to {}", database_url));
 
         use self::schema::ApplicationState::dsl::*;
-        if ApplicationState.filter(id.eq(0)).load::<models::ApplicationState>(&mut connection).unwrap().len() == 0 {
+        if ApplicationState.filter(id.eq(1)).load::<models::ApplicationState>(&mut connection).unwrap().len() == 0 {
             diesel::insert_into(ApplicationState)
                 .values(models::NewApplicationState{
-                    id: 0,
+                    id: 1,
                 })
                 .execute(&mut connection).unwrap();
         }
@@ -153,28 +153,28 @@ impl DbConn {
         let lock = &mut *self.0.lock()
             .map_err(|_| diesel::result::Error::RollbackTransaction)?;
         if let Some(current_engine_possition) = current_engine_possition {
-            diesel::update(ApplicationState.filter(id.eq(0)))
+            diesel::update(ApplicationState.filter(id.eq(1)))
             .set(engine_steps_per_rotation.eq(current_engine_possition))
             .execute(lock)?;
         }
         if let Some(_active_preset) = _active_preset {
-            diesel::update(ApplicationState.filter(id.eq(0)))
+            diesel::update(ApplicationState.filter(id.eq(1)))
             .set(active_preset.eq(active_preset))
             .execute(lock)?;
         }
         if let Some(_engine_steps_per_rotation) = _engine_steps_per_rotation {
-            diesel::update(ApplicationState.filter(id.eq(0)))
+            diesel::update(ApplicationState.filter(id.eq(1)))
             .set(engine_steps_per_rotation.eq(_engine_steps_per_rotation as i32))
             .execute(lock)?;
         }
         if let Some(_automatic_mode) = _automatic_mode {
-            diesel::update(ApplicationState.filter(id.eq(0)))
+            diesel::update(ApplicationState.filter(id.eq(1)))
             .set(automatic_mode.eq(_automatic_mode))
             .execute(lock)?;
         }
 
         if let Some(_automatic_mode_delay) = _automatic_mode_delay {
-            diesel::update(ApplicationState.filter(id.eq(0)))
+            diesel::update(ApplicationState.filter(id.eq(1)))
             .set(automatic_mode_delay.eq(_automatic_mode_delay))
             .execute(lock)?;
         }
@@ -187,7 +187,7 @@ impl DbConn {
         let lock = &mut *self.0.lock()
             .map_err(|_| diesel::result::Error::RollbackTransaction)?;
         ApplicationState
-            .filter(id.eq(0))
+            .filter(id.eq(1))
             .first(lock)
     }
 
