@@ -56,14 +56,15 @@ fn light_strip(strip: &mut Arc<Mutex<Strip>>,  mode: &str, color: Option<[u8; 3]
 
 fn walk_engine(gpio_engine: &mut Arc<Mutex<GpioEngine>>, go_right: bool, delta_distance: Option<u64>) -> (i32, bool) {
     let mut lock = gpio_engine.lock().unwrap();
-    let steps_per_round = lock.stepps_per_round;
+    const STEPS_PER_MOVE: i32 = 200;
     let delay_micros = lock.delay_micros;
     let mut delta_pos: i32;
     let mut hit_calibration = false;
+
     if let Some(delta) = delta_distance {
         delta_pos = delta as i32;
     } else {
-        delta_pos = 1 * steps_per_round as i32;   
+        delta_pos = STEPS_PER_MOVE as i32;   
     }
     if !go_right {
         lock.dir.write(Level::Low);
@@ -72,7 +73,7 @@ fn walk_engine(gpio_engine: &mut Arc<Mutex<GpioEngine>>, go_right: bool, delta_d
         lock.dir.write(Level::High);
     }
     let mut run_engine = |i: i32| -> () {
-            if lock.calibrate.read() == Level::High {
+            if lock.calibrate.read() == Level::Low {
                 delta_pos = delta_pos - i;
                 hit_calibration = true;
             }
@@ -86,7 +87,7 @@ fn walk_engine(gpio_engine: &mut Arc<Mutex<GpioEngine>>, go_right: bool, delta_d
             run_engine(i as i32);
         }
     } else {
-    for i in 0..steps_per_round {
+    for i in 0..STEPS_PER_MOVE {
         run_engine(i as i32);
         }
     }
@@ -139,19 +140,19 @@ impl GlobalIoHandlers {
         let active_preset = db.get_application_state().unwrap().active_preset;
 
         let goip_ui = GpioUi {
-            home: Gpio::new().unwrap().get(23).unwrap().into_input_pulldown(),
-            left: Gpio::new().unwrap().get(25).unwrap().into_input_pulldown(),
-            right: Gpio::new().unwrap().get(22).unwrap().into_input_pulldown(),
-            enter: Gpio::new().unwrap().get(24).unwrap().into_input_pulldown(),
+            home: Gpio::new().unwrap().get(23).unwrap().into_input_pullup(),
+            left: Gpio::new().unwrap().get(25).unwrap().into_input_pullup(),
+            right: Gpio::new().unwrap().get(22).unwrap().into_input_pullup(),
+            enter: Gpio::new().unwrap().get(24).unwrap().into_input_pullup(),
         };
         let mut gpio_engine = GpioEngine {
             dir: Gpio::new().unwrap().get(20).unwrap().into_output(),
             step: Gpio::new().unwrap().get(21).unwrap().into_output(),
             sleep: Gpio::new().unwrap().get(26).unwrap().into_output(),
-            calibrate: Gpio::new().unwrap().get(19).unwrap().into_input_pulldown(),
+            calibrate: Gpio::new().unwrap().get(19).unwrap().into_input_pullup(),
             
             stepps_per_round: db.get_application_state().unwrap().engine_steps_per_rotation as u64,
-            delay_micros: db.get_application_state().unwrap().engine_steps_per_rotation as u64,
+            delay_micros: db.get_application_state().unwrap().delay_micros as u64,
         };
         
         gpio_engine.sleep.write(Level::Low);
@@ -231,7 +232,7 @@ fn main_prosessing_loop() -> () {
                             global_io: _global_io,
                             current_selection: 2,
                             return_to: vec![UiPages::CalibrationPage, UiPages::MoveToTarget, UiPages::Menu1],
-                        }.watch_loop("Calib. Preset. >", vec![(0, 6), (8, 13), (15, 16)])}),       
+                        }.watch_loop("Calib. Preset. >", vec![(0, 6), (7, 14), (15, 16)])}),       
                 UiPages::Menu3 => 
                     thread::spawn(move || {
                         MainMenu {
@@ -303,7 +304,8 @@ fn main_prosessing_loop() -> () {
                             global_io: _global_io,
                             current_selection: 0,
                             target: _move_target,
-                        }.watch_loop("1 2 3 4 5 6 7 8 ", vec![ (0, 1), (2, 3), (4, 5), (6, 7), (8, 9), (10, 11), (12, 13), (14, 15)])
+                            enter_pressed: false
+                        }.reactive_watch("1 2 3 4 5 6 7 8 ", vec![ (0, 1), (2, 3), (4, 5), (6, 7), (8, 9), (10, 11), (12, 13), (14, 15)])
                     })
                 },
             });

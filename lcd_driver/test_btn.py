@@ -12,13 +12,13 @@ BUTTON_PINS = {
 # GPIO setup
 GPIO.setmode(GPIO.BCM)
 for pin in BUTTON_PINS:
-    GPIO.setup(pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+    GPIO.setup(pin, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
 
 try:
     print("Monitoring buttons. Press Ctrl+C to stop.")
     while True:
         for pin, name in BUTTON_PINS.items():
-            if GPIO.input(pin) == GPIO.LOW:  # Button pressed
+            if GPIO.input(pin) == GPIO.HIGH:  # Button pressed
                 print(f"{name} pressed!")  # Optional: print to console
                 time.sleep(0.3)  # Debounce delay
         time.sleep(0.1)  # Small delay to prevent high CPU usage

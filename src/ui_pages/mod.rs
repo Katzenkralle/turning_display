@@ -78,7 +78,7 @@ pub (crate) trait MenuPage {
                 }
             
             for (level, handler) in actions.iter() {
-                if *level == Level::High {
+                if *level == Level::Low {
                     gpio_lock = None;
                     if let Some(page) = handler(self, option.len() as u8) {
                         self.teardown();
@@ -154,7 +154,7 @@ pub (crate) trait MenuPage {
     fn get_lcd(&mut self) -> Arc<Mutex<LCDdriver>>;
     fn get_current_selection(&self) -> usize;
     fn set_current_selection(&mut self, selection: usize) -> ();
-    fn teardown(&mut self) -> ();
+    fn teardown(&mut self) -> (){}
     fn get_termination(&self) -> Option<UiPages>;
 
     fn home_handler(&mut self, options_len: u8) -> Option<UiPages> {

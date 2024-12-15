@@ -39,23 +39,9 @@ impl DbConn {
         let mut lock = self.0.lock().map_err(|_| diesel::result::Error::RollbackTransaction)?;
         
         // Query the database
-        let result = Led
-            .filter(associated_preset.eq(associates))
-            .load::<models::Led>(&mut *lock);
-        
-        // Handle the result properly
-        Ok(match result {
-            Ok(leds) => leds, // Directly return the LEDs if the query succeeds
-            Err(_) => (0..MAX_LED)
-                .map(|_| models::Led {
-                    id: 0,
-                    color: "ff0000".to_string(),
-                    brightness: 10,
-                    mode: "solid".to_string(),
-                    associated_preset: None,
-                })
-                .collect::<Vec<models::Led>>(), // Collect into a Vec directly
-        })        
+        Led
+        .filter(associated_preset.eq(associates))
+        .load::<models::Led>(&mut *lock)
     }
         
 
@@ -98,10 +84,23 @@ impl DbConn {
 
     pub fn copy_led_to_preset(&self, target:i32 ) -> Result<(), diesel::result::Error> {
         use self::schema::Led::dsl::*;
+        let _active_preset = self.get_application_state().unwrap().active_preset;
         let lock = &mut *self.0.lock()
             .map_err(|_| diesel::result::Error::RollbackTransaction)?;
-        let _active_preset = self.get_application_state().unwrap().active_preset;
-        for led in self.get_associated_led(_active_preset).unwrap() {
+
+        let leds = Led
+            .filter(associated_preset.eq(_active_preset))
+            .load::<models::Led>(&mut *lock)
+            .unwrap_or((0..MAX_LED)
+            .map(|_| models::Led {
+                id: 0,
+                color: "ff0000".to_string(),
+                brightness: 10,
+                mode: "solid".to_string(),
+                associated_preset: None,
+            })
+            .collect::<Vec<models::Led>>());
+        for led in leds {
             diesel::insert_into(Led)
                 .values(models::NewLed{
                     color: led.color,
@@ -116,9 +115,9 @@ impl DbConn {
 
     pub fn copy_engine_to_preset(&self, target:i32 ) -> Result<(), diesel::result::Error> {
         use self::schema::Engine::dsl::*;
+        let _active_preset = self.get_application_state().unwrap().active_preset;
         let lock = &mut *self.0.lock()
             .map_err(|_| diesel::result::Error::RollbackTransaction)?;
-        let _active_preset = self.get_application_state().unwrap().active_preset;
 
         let res = Engine.filter(associated_preset.eq(target)).load::<models::Engine>(lock).unwrap_or(Vec::new());
         match res.len() {
@@ -162,12 +161,15 @@ impl DbConn {
         }
         
         if let Some(_position) = _position {
-            diesel::update(Engine.filter(is_target.eq(true)))
+            diesel::update(Engine.filter(associated_preset.eq(_associated_preset)))
                 .set(position.eq(_position))
                 .execute(lock)?;
         }
         if let Some(_is_target) = _is_target {
             diesel::update(Engine.filter(is_target.eq(true)))
+                .set(is_target.eq(false))
+                .execute(lock)?;
+            diesel::update(Engine.filter(associated_preset.eq(_associated_preset)))
                 .set(is_target.eq(_is_target))
                 .execute(lock)?;
         }
@@ -221,7 +223,7 @@ impl DbConn {
             .map_err(|_| diesel::result::Error::RollbackTransaction)?;
         if let Some(current_engine_possition) = current_engine_possition {
             diesel::update(ApplicationState.filter(id.eq(1)))
-            .set(engine_steps_per_rotation.eq(current_engine_possition))
+            .set(current_engine_pos.eq(current_engine_possition))
             .execute(lock)?;
         }
         if let Some(_active_preset) = _active_preset {

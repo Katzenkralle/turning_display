@@ -46,6 +46,11 @@ impl MenuPage for LedCtrlPage {
     }
 
     fn enter_handler(&mut self, _: u8) -> Option<UiPages> {
+        
+        if let Some(page) = self.return_to.iter().filter(|(sel, _)| *sel == self.current_selection).map(|(_, page)| *page).nth(0){
+            return Some(page);
+        }
+        
         let brightness_modifyer = |_color: &str, change_by: f32| -> (String, [u8; 3]) {
             let hsl_color = Rgb::from_hex_str(_color).unwrap().to_hsl();
             let hsl_color = Hsl::from((hsl_color.get_hue() + change_by).min(359.0), hsl_color.get_saturation(), hsl_color.get_lightness());
@@ -107,7 +112,7 @@ impl LedCtrlPage {
 
         let info = match self.setting {
             UiPages::LedColor => {
-            format!("{:03}/360", Rgb::from_hex_str(&self.color).unwrap().to_hsl().get_hue() as u8)
+            format!("{:03}/360", Rgb::from_hex_str(&self.color).unwrap().to_hsl().get_hue() as u16)
             },
             UiPages::LedBrightness => {
             format!("{:03}%", self.brightness)

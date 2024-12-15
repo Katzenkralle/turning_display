@@ -17,6 +17,7 @@ pub (crate) struct MoveToTarget {
     pub global_io: GlobalIoHandlers,
     pub current_selection: usize,
     pub target: i32,
+    pub enter_pressed: bool,
 }
 
 impl MenuPage for MoveToTarget {
@@ -32,25 +33,37 @@ impl MenuPage for MoveToTarget {
         self.current_selection
     }
 
-    fn get_termination(&self) -> Option<UiPages> {
-        None
-    }
-
     fn set_current_selection(&mut self, selection: usize) -> () {
         self.current_selection = selection;
     }
 
-    fn teardown(&mut self) -> () {
-    }
 
     fn enter_handler(&mut self, opt_len: u8) -> Option<UiPages> {
-        if opt_len != 0 {
+        self.enter_pressed = true;
+        None    
+    }
+
+    fn get_termination(&self) -> Option<UiPages> {
+        if let Ok(signal) = self.global_io.terminate.try_lock() {
+            if let Some(page) = *signal {
+                return Some(page);
+            }
+        }
+        None
+    }
+}
+
+impl MoveToTarget {
+    fn loade_handler(&mut self, called_from: u32) -> Option<UiPages> {
+        let db_bindig = self.global_io.db.clone();
+        let mut db_lock = db_bindig.lock().unwrap();
+        if called_from != 0 {
             // Meaning it was NOT called by the pre_loop_hook
             self.target = self.current_selection as i32 + 1;
         }
 
         if self.target != 0 {
-            let resolved_target = self.global_io.db.lock().unwrap().get_engine_preset(self.target);
+            let resolved_target = db_lock.get_engine_preset(self.target);
             let new_pos = match resolved_target {
                 Ok(preset) => {
                     let lcd_bindig = self.get_lcd();
@@ -67,15 +80,13 @@ impl MenuPage for MoveToTarget {
 
                     let needed_sterps = |go_right: bool| -> i32 {
                         let mut steps = 0;
-                        let mut current_pos = self.global_io.db.lock().unwrap().get_application_state().unwrap().current_engine_pos;
+                        let mut current_pos = db_lock.get_application_state().unwrap().current_engine_pos;
                         let steps_per_round = self.global_io.gpio_engine.lock().unwrap().stepps_per_round;
                         let u = match go_right {
                             true => 1,
                             false => -1
                         };
                         loop {
-                            steps = steps + 1;
-                            current_pos = current_pos + u;
                             if current_pos > steps_per_round  as i32{
                                 current_pos = 0;
                             } else if current_pos < 0 {
@@ -84,6 +95,8 @@ impl MenuPage for MoveToTarget {
                             if current_pos == preset.position {
                                 break
                             }
+                            current_pos = current_pos + u;
+                            steps = steps + 1;
                         }
                         steps
                     };
@@ -100,24 +113,23 @@ impl MenuPage for MoveToTarget {
                     Some(preset.position)
                 },
                 _ => {
-                    let _ = self.global_io.db.lock().unwrap().copy_engine_to_preset(self.target);
+                    let _ = db_lock.copy_engine_to_preset(self.target);
                     None
                 }
             };
-            match self.global_io.db.lock().unwrap().get_associated_led(self.target) {
-               Ok(led) => {
-                    let ref_led = led.first().unwrap();
-                    let color = Rgb::from_hex_str(&ref_led.color).unwrap();
-                    light_strip(&mut self.global_io.rgb_strip, &ref_led.mode, 
-                    Some([color.get_red() as u8, color.get_green() as u8, color.get_blue() as u8]), Some(ref_led.brightness as u8));
-                    
-               }
-               _ => {
-                    let _ = self.global_io.db.lock().unwrap().copy_led_to_preset(self.target);
-               }
+            let leds = db_lock.get_associated_led(self.target).unwrap_or(Vec::new());
+            match leds.len() {
+                0 => {
+                    let _ = db_lock.copy_led_to_preset(self.target);
+                },
+                _ => {
+                    let color = Rgb::from_hex_str(&leds[0].color).unwrap();
+                    light_strip(&mut self.global_io.rgb_strip, &leds[0].mode,
+                    Some([color.get_red() as u8, color.get_green() as u8, color.get_blue() as u8]), Some(leds[0].brightness as u8));    
+                }
             }
             // Wee commit every time, to change the active preset
-            self.global_io.db.lock().unwrap().update_application_state(
+            db_lock.update_application_state(
                 new_pos,
                 Some(self.target),
                 None,
@@ -131,14 +143,20 @@ impl MenuPage for MoveToTarget {
         None
 
         }
-    
-}
+    }
 
 impl ReactivePage for MoveToTarget {
     fn pree_loop_hook(&mut self) -> Option<UiPages> {
         if self.target != 0 {
             self.enter_handler(0);
             return Some(UiPages::Menu1);
+        }
+        None
+    }
+    fn change_hook(&mut self) -> Option<UiPages> {
+        if self.enter_pressed {
+            self.enter_pressed = false;
+            return self.loade_handler(1)
         }
         None
     }
