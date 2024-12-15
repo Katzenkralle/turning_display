@@ -1,6 +1,6 @@
 use diesel::prelude::*;
 use dotenvy::dotenv;
-use schema::ApplicationState::{automatic_mode, engine_steps_per_rotation};
+use schema::ApplicationState::{active_preset, automatic_mode, engine_steps_per_rotation};
 use std::env;
 
 pub mod models;
@@ -35,12 +35,29 @@ impl DbConn {
 
     pub fn get_associated_led(&self, associates: i32) -> Result<Vec<models::Led>, diesel::result::Error> {
         use self::schema::Led::dsl::*;
-        let lock = &mut *self.0.lock()
-            .map_err(|_| diesel::result::Error::RollbackTransaction)?;
-        Led
-        .filter(associated_preset.eq(associates))
-        .load(lock)
+        // Obtain a lock on the connection
+        let mut lock = self.0.lock().map_err(|_| diesel::result::Error::RollbackTransaction)?;
+        
+        // Query the database
+        let result = Led
+            .filter(associated_preset.eq(associates))
+            .load::<models::Led>(&mut *lock);
+        
+        // Handle the result properly
+        Ok(match result {
+            Ok(leds) => leds, // Directly return the LEDs if the query succeeds
+            Err(_) => (0..MAX_LED)
+                .map(|_| models::Led {
+                    id: 0,
+                    color: "ff0000".to_string(),
+                    brightness: 10,
+                    mode: "solid".to_string(),
+                    associated_preset: None,
+                })
+                .collect::<Vec<models::Led>>(), // Collect into a Vec directly
+        })        
     }
+        
 
     pub fn update_led(&self, target_associates: i32, _color: Option<&String>, _brightness: Option<u8>, _mode: Option<&String>) -> Result<(), diesel::result::Error> {
         use self::schema::Led::dsl::*;
@@ -78,6 +95,56 @@ impl DbConn {
         }
         Ok(())
     }
+
+    pub fn copy_led_to_preset(&self, target:i32 ) -> Result<(), diesel::result::Error> {
+        use self::schema::Led::dsl::*;
+        let lock = &mut *self.0.lock()
+            .map_err(|_| diesel::result::Error::RollbackTransaction)?;
+        let _active_preset = self.get_application_state().unwrap().active_preset;
+        for led in self.get_associated_led(_active_preset).unwrap() {
+            diesel::insert_into(Led)
+                .values(models::NewLed{
+                    color: led.color,
+                    brightness: led.brightness,
+                    mode: led.mode,
+                    associated_preset: Some(target),
+                })
+                .execute(lock)?;
+        }
+        Ok(())
+    }
+
+    pub fn copy_engine_to_preset(&self, target:i32 ) -> Result<(), diesel::result::Error> {
+        use self::schema::Engine::dsl::*;
+        let lock = &mut *self.0.lock()
+            .map_err(|_| diesel::result::Error::RollbackTransaction)?;
+        let _active_preset = self.get_application_state().unwrap().active_preset;
+
+        let res = Engine.filter(associated_preset.eq(target)).load::<models::Engine>(lock).unwrap_or(Vec::new());
+        match res.len() {
+            0 => {
+                diesel::insert_into(Engine)
+                    .values(models::NewEngine{
+                        position: 0,
+                        is_target: true,
+                        associated_preset: Some(target),
+                    })
+                    .execute(lock)?;
+            },
+            _ => {
+                diesel::insert_into(Engine)
+                    .values(models::NewEngine{
+                        position: res[0].position,
+                        is_target: true,
+                        associated_preset: Some(target),
+                    })
+                    .execute(lock)?;
+            }
+        };
+    
+        Ok(())
+    }
+
 
     pub fn update_engin(&self,  _associated_preset: i32,  _position: Option<i32>, _is_target: Option<bool>) -> Result<(), diesel::result::Error> {
         use self::schema::Engine::dsl::*;

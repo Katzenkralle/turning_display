@@ -69,10 +69,10 @@ impl MenuPage for ManualControllPage {
             },
             1 => {
                 let db_lock = self.global_io.db.lock().unwrap();
-                db_lock.update_engin(*self.global_io.active_preset.lock().unwrap(),
+                let _ = db_lock.update_engin(*self.global_io.active_preset.lock().unwrap(),
                     Some(db_lock.get_application_state().unwrap().current_engine_pos),
-                    Some(true))
-                .unwrap();
+                    Some(true));
+                // ToDo: test if LED exists in db when a new preset is createrd
                 return Some(UiPages::Menu1);
             },
             2 => {

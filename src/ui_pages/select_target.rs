@@ -99,7 +99,10 @@ impl MenuPage for MoveToTarget {
                     
                     Some(preset.position)
                 },
-                _ => None
+                _ => {
+                    let _ = self.global_io.db.lock().unwrap().copy_engine_to_preset(self.target);
+                    None
+                }
             };
             match self.global_io.db.lock().unwrap().get_associated_led(self.target) {
                Ok(led) => {
@@ -109,7 +112,9 @@ impl MenuPage for MoveToTarget {
                     Some([color.get_red() as u8, color.get_green() as u8, color.get_blue() as u8]), Some(ref_led.brightness as u8));
                     
                }
-               _ => {}
+               _ => {
+                    let _ = self.global_io.db.lock().unwrap().copy_led_to_preset(self.target);
+               }
             }
             // Wee commit every time, to change the active preset
             self.global_io.db.lock().unwrap().update_application_state(
