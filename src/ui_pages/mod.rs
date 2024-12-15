@@ -78,7 +78,7 @@ pub (crate) trait MenuPage {
                 }
             
             for (level, handler) in actions.iter() {
-                if *level == Level::Low {
+                if *level == Level::High {
                     gpio_lock = None;
                     if let Some(page) = handler(self, option.len() as u8) {
                         self.teardown();

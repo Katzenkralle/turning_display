@@ -44,7 +44,7 @@ impl MenuPage for ManualControllPage {
                     acumulated_distance = 0;
                 }
                 acumulated_distance = acumulated_distance + delta.0;
-                if input_lock.enter.read() != Level::Low {
+                if input_lock.enter.read() != Level::High {
                     break
                 }
             }

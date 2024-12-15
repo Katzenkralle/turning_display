@@ -78,7 +78,7 @@ impl ReactivePage for CalibrationPage {
         
             while walk_engine(&mut self.global_io.gpio_engine, true, None).1 == false {
                 // do nothing
-                if gpio_lock.enter.read() == gpio::Level::Low {
+                if gpio_lock.enter.read() == gpio::Level::High {
                     return Some(UiPages::Menu1)
                 }            }
             let _ = lcd_lock.exec(LCDCommand { cmd: LCDProgramm::Move,
@@ -98,7 +98,7 @@ impl ReactivePage for CalibrationPage {
             // calibration point found, counting steps
             while walk_engine(&mut self.global_io.gpio_engine, true, None).1 == true {
                 pos_counnter = pos_counnter + 1;
-                if gpio_lock.enter.read() == gpio::Level::Low {
+                if gpio_lock.enter.read() == gpio::Level::High {
                     return Some(UiPages::Menu1)
                 }            }
             self.global_io.gpio_engine.lock().unwrap().sleep.set_low();

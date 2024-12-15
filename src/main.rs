@@ -72,7 +72,7 @@ fn walk_engine(gpio_engine: &mut Arc<Mutex<GpioEngine>>, go_right: bool, delta_d
         lock.dir.write(Level::High);
     }
     let mut run_engine = |i: i32| -> () {
-            if lock.calibrate.read() == Level::Low {
+            if lock.calibrate.read() == Level::High {
                 delta_pos = delta_pos - i;
                 hit_calibration = true;
             }
@@ -139,16 +139,16 @@ impl GlobalIoHandlers {
         let active_preset = db.get_application_state().unwrap().active_preset;
 
         let goip_ui = GpioUi {
-            home: Gpio::new().unwrap().get(23).unwrap().into_input_pullup(),
-            left: Gpio::new().unwrap().get(25).unwrap().into_input_pullup(),
-            right: Gpio::new().unwrap().get(22).unwrap().into_input_pullup(),
-            enter: Gpio::new().unwrap().get(24).unwrap().into_input_pullup(),
+            home: Gpio::new().unwrap().get(23).unwrap().into_input_pulldown(),
+            left: Gpio::new().unwrap().get(25).unwrap().into_input_pulldown(),
+            right: Gpio::new().unwrap().get(22).unwrap().into_input_pulldown(),
+            enter: Gpio::new().unwrap().get(24).unwrap().into_input_pulldown(),
         };
         let mut gpio_engine = GpioEngine {
             dir: Gpio::new().unwrap().get(20).unwrap().into_output(),
             step: Gpio::new().unwrap().get(21).unwrap().into_output(),
             sleep: Gpio::new().unwrap().get(26).unwrap().into_output(),
-            calibrate: Gpio::new().unwrap().get(19).unwrap().into_input(),
+            calibrate: Gpio::new().unwrap().get(19).unwrap().into_input_pulldown(),
             
             stepps_per_round: db.get_application_state().unwrap().engine_steps_per_rotation as u64,
             delay_micros: db.get_application_state().unwrap().engine_steps_per_rotation as u64,
@@ -223,15 +223,15 @@ fn main_prosessing_loop() -> () {
                         MainMenu {
                         global_io: _global_io,
                         current_selection: 0,
-                        return_to: vec![UiPages::Menu2, UiPages::ManualControll, UiPages::LedColor, UiPages::Menu3],
-                    }.watch_loop("< mPos.   Led. >", vec![(0,1), (2, 7), (10, 14)])}),  
+                        return_to: vec![UiPages::Menu2, UiPages::ManualControll, UiPages::LedColor],
+                    }.watch_loop("< mPos.   Led.  ", vec![(0,1), (2, 7), (10, 14)])}),  
                 UiPages::Menu2 =>
                     thread::spawn(move || {
                         MainMenu {
                             global_io: _global_io,
                             current_selection: 2,
-                            return_to: vec![UiPages::ManualControll, UiPages::Menu2, UiPages::Menu1],
-                        }.watch_loop("  Sav.   XXX.  >", vec![(2, 6), (9, 13), (15, 16)])}),       
+                            return_to: vec![UiPages::CalibrationPage, UiPages::MoveToTarget, UiPages::Menu1],
+                        }.watch_loop("Calib. Preset. >", vec![(0, 6), (8, 13), (15, 16)])}),       
                 UiPages::Menu3 => 
                     thread::spawn(move || {
                         MainMenu {
