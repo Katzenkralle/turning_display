@@ -68,7 +68,6 @@ fn walk_engine(gpio_engine: &mut Arc<Mutex<GpioEngine>>, go_right: bool, delta_d
     }
     if !go_right {
         lock.dir.write(Level::Low);
-        delta_pos *= -1;
     } else {
         lock.dir.write(Level::High);
     }
@@ -90,6 +89,9 @@ fn walk_engine(gpio_engine: &mut Arc<Mutex<GpioEngine>>, go_right: bool, delta_d
     for i in 0..STEPS_PER_MOVE {
         run_engine(i as i32);
         }
+    }
+    if !go_right {
+        delta_pos = delta_pos * -1;
     }
     (delta_pos, hit_calibration)
 }

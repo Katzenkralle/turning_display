@@ -73,7 +73,7 @@ impl MoveToTarget {
                     let _ = lcd_lock.exec(lcd_driver::LCDCommand { cmd: lcd_driver::LCDProgramm::Write,
                         args: Some({
                             let mut map = HashMap::new();
-                            map.insert("text".to_string(), lcd_driver::LCDArg::String("text".to_string()));
+                            map.insert("text".to_string(), lcd_driver::LCDArg::String(format!("Moving to:      {}", preset.position)));
                             map
                         })
                     });
