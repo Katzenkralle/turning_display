@@ -102,10 +102,12 @@ def receive_data(sock):
                 except:
                     print("An error occured while reciving a stream.")
                     return []
+            elif  "" == part and buffer == "":
+                # Nothing to be recived
+                return []
 
 def connection_handler(conn, addr):
     global shared_controller
-    #conn.settimeout(5)
     conn.setblocking(False)
     try:
         last_msg = time.time()
@@ -147,13 +149,14 @@ def connection_handler(conn, addr):
                     case "clear":
                         shared_controller.clear()
             else:
-                if time.time() - last_msg >= 500: # timeout in s
+                if time.time() - last_msg >= 60: # timeout in s
                     raise socket.timeout
     except socket.timeout as t:
         print(f"Closing connection due to timeout..")
     finally:
         print(f"Closed {(conn, addr)}")
         conn.close()
+        print(f"{threading.active_count() -2} Workers still active")
 
 if __name__ == "__main__":
     try:
@@ -181,6 +184,7 @@ if __name__ == "__main__":
     while True:
         conn_obj = s.accept()
         print(f"Accepted a new connection {conn_obj}")
+        print(f"{threading.active_count() -2} Workers still active")
         threading.Thread(target=connection_handler, args=(*conn_obj,)).start()
         
 

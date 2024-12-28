@@ -69,12 +69,14 @@ pub (crate) trait MenuPage {
             
             if let Some(ref func) = loop_hook {
                 lcd_lock = None;
+                gpio_lock = None;    
                 let a = func(self);
                 if a.is_some() {
                     self.teardown();
                     return a.unwrap();
                 }
                 lcd_lock = Some(lcd_binding.lock().unwrap());
+                gpio_lock = Some(gpio_binding.lock().unwrap());
                 }
             
             for (level, handler) in actions.iter() {
@@ -115,12 +117,14 @@ pub (crate) trait MenuPage {
                 if last_selection == -2 {
                     if let Some(ref func) = pree_loop_hook {
                         lcd_lock = None;
+                        gpio_lock = None;    
                         let a = func(self);
                         if a.is_some() {
                             self.teardown();
                             return a.unwrap();
                         }
                         lcd_lock = Some(lcd_binding.lock().unwrap());
+                        gpio_lock = Some(gpio_binding.lock().unwrap());
                     }
                 }
                 last_selection = self.get_current_selection() as i16;
@@ -128,12 +132,14 @@ pub (crate) trait MenuPage {
             if change {
                 if let Some(ref func) = change_hook {
                     lcd_lock = None;
+                    gpio_lock = None;    
                     let a = func(self);
                     if a.is_some() {
                         self.teardown();
                         return a.unwrap();
                     }
                     lcd_lock = Some(lcd_binding.lock().unwrap());
+                    gpio_lock = Some(gpio_binding.lock().unwrap());
                 }
                 if loop_start_time.elapsed() < Duration::from_millis(USER_INPUT_DELAY) {
                     thread::sleep(Duration::from_millis(USER_INPUT_DELAY) - loop_start_time.elapsed());

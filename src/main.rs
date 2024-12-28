@@ -294,7 +294,7 @@ fn main_prosessing_loop() -> () {
                         CalibrationPage {
                             global_io: _global_io,
                             current_selection: 0,
-                        }.watch_loop("Calibrating STOP", vec![(14, 16)])
+                        }.reactive_watch("Calibrating STOP", vec![(12, 16)])
                     }),
                 UiPages::MoveToTarget =>{
                     let _move_target = move_to_target.clone();

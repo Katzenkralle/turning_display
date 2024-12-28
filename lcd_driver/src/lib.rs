@@ -76,8 +76,25 @@ impl LCDdriver {
         let mut json_command = to_vec(&json!(command))
             .map_err(|_| LCDError::DriverError { comment: "Serialization failed" })?;
         json_command.push('\n' as u8);
-        self.driver_stream
-            .write_all(&json_command)
-            .map_err(|e| {let msg = format!("Could not write to socket {:?}", e.to_string()); return LCDError::DriverError { comment: Box::leak(msg.into_boxed_str()) }})
+
+        // Attempt to write to the stream
+        if let Err(write_error) = self.driver_stream.write_all(&json_command) {
+            eprintln!("Write error: {:?}, attempting to reopen connection.", write_error);
+
+            // Try to reopen the connectionn
+            self.driver_stream = UnixStream::connect_addr(&self.driver_stream.peer_addr().unwrap())
+                .expect("Unexpected error reopening connection");
+            self.driver_stream
+                .write_all(&json_command)
+                .map_err(|retry_error| {
+                    let msg = format!(
+                        "Retrying write failed after reopening connection: {:?}",
+                        retry_error
+                    );
+                    LCDError::DriverError { comment: Box::leak(msg.into_boxed_str()) }
+                })?;
+        
+        }
+        Ok(())
     }
 }

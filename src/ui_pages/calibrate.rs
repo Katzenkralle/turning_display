@@ -8,7 +8,6 @@ use crate::{LCDdriver, GpioUi};
 use crate::{LCDCommand, LCDArg, LCDProgramm};
 use std::collections::HashMap;
 
-
 pub (crate) struct CalibrationPage {
     pub(crate) global_io: GlobalIoHandlers,
     pub(crate) current_selection: usize,
@@ -71,37 +70,59 @@ impl ReactivePage for CalibrationPage {
 
         let mut pos_counnter: u64 = 0;
 
-    
-
         self.global_io.gpio_engine.lock().unwrap().sleep.set_high();
 
-        
+        let result = (|| {
             while walk_engine(&mut self.global_io.gpio_engine, true, None).1 == false {
-                // do nothing
-                if gpio_lock.enter.read() == gpio::Level::High {
-                    return Some(UiPages::Menu1)
-                }            }
-            let _ = lcd_lock.exec(LCDCommand { cmd: LCDProgramm::Move,
+                // Walk until Calibration point found
+                if gpio_lock.enter.read() == gpio::Level::Low {
+                    // Stop on user request
+                    return Some(UiPages::Menu1);
+                }
+            }
+            let _ = lcd_lock.exec(LCDCommand {
+                cmd: LCDProgramm::Move,
                 args: Some({
                     let mut map = HashMap::new();
                     map.insert("y".to_string(), LCDArg::Int(1));
                     map.insert("x".to_string(), LCDArg::Int(0));
                     map
-                }) });
-
-            let _ = lcd_lock.exec(LCDCommand { cmd: LCDProgramm::Write,
+                }),
+            });
+    
+            let _ = lcd_lock.exec(LCDCommand {
+                cmd: LCDProgramm::Write,
                 args: Some({
                     let mut map = HashMap::new();
                     map.insert("text".to_string(), LCDArg::String("Counting ESC".to_string()));
                     map
-                }) });
-            // calibration point found, counting steps
-            while walk_engine(&mut self.global_io.gpio_engine, true, None).1 == true {
-                pos_counnter = pos_counnter + 1;
-                if gpio_lock.enter.read() == gpio::Level::High {
-                    return Some(UiPages::Menu1)
-                }            }
-            self.global_io.gpio_engine.lock().unwrap().sleep.set_low();
+                }),
+            });
+            // create distanse to not trigger callibration point
+            walk_engine(&mut self.global_io.gpio_engine, true, Some(200*32));
+            pos_counnter += 200*32;
+            // Calibration point found, counting steps
+            loop {
+                let walk_result = walk_engine(&mut self.global_io.gpio_engine, true, None);
+                if walk_result.1 {
+                    break;
+                }
+                if gpio_lock.enter.read() == gpio::Level::Low {
+                    // Stop on user request
+                    return Some(UiPages::Menu1);
+                }
+                pos_counnter += walk_result.0 as u64;
+            }
+            None // Default return
+        })();
+    
+        // Cleanup block
+        self.global_io.gpio_engine.lock().unwrap().sleep.set_low();
+    
+        if let Some(r) = result {
+            return Some(r);
+        }
+        
             let _ = lcd_lock.exec(LCDCommand { cmd: LCDProgramm::Move,
                 args: Some({
                     let mut map = HashMap::new();
@@ -109,6 +130,8 @@ impl ReactivePage for CalibrationPage {
                     map.insert("x".to_string(), LCDArg::Int(0));
                     map
                 }) });
+            let _ = lcd_lock.exec(LCDCommand { cmd: LCDProgramm::Clear,
+                args: None });
             let _ = lcd_lock.exec(LCDCommand { cmd: LCDProgramm::Write,
                 args: Some({
                     let mut map = HashMap::new();
@@ -119,8 +142,7 @@ impl ReactivePage for CalibrationPage {
             let mut db_lock = self.global_io.db.lock().unwrap();
             db_lock.update_application_state(Some(0), None, Some(pos_counnter), None, None).unwrap();
             self.global_io.gpio_engine.lock().unwrap().update_steps_per_round(pos_counnter as u64);
-            Some(UiPages::Menu1)
-            
+            None            
         }
         
     }    
